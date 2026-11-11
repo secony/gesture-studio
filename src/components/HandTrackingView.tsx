@@ -134,6 +134,18 @@ export function HandTrackingView() {
           const rightHand = hands.find(
             (hand) => hand.handedness === "Right"
           );
+          const leftHand = hands.find(
+  (hand) => hand.handedness === "Left"
+);
+
+const leftIndexTip = leftHand?.landmarks[8];
+
+const secondaryHandPosition = leftIndexTip
+  ? {
+      x: leftIndexTip.x,
+      y: leftIndexTip.y,
+    }
+  : null;
 
           const rightHandGesture = currentGestures.find(
             (hand) => hand.handedness === "Right"
@@ -157,10 +169,11 @@ export function HandTrackingView() {
           }
 
           const playgroundState = playgroundEngine.update(
-            lastCursorPosition,
-            isPinching,
-            isActive
-          );
+  lastCursorPosition,
+  isPinching,
+  isActive,
+  secondaryHandPosition
+);
 
           if (previousDragging !== playgroundState.isDragging) {
             previousDragging = playgroundState.isDragging;

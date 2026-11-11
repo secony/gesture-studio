@@ -11,9 +11,14 @@ export interface PlaygroundState {
   objects: PlaygroundObject[];
   selectedObjectId: string | null;
   isDragging: boolean;
+  isResizing: boolean;
 }
 
 const PINCH_RELEASE_DELAY_MS = 150;
+
+const MIN_HALF_SIZE = 0.05;
+const MAX_HALF_SIZE = 0.18;
+const RESIZE_SENSITIVITY = 0.5;
 
 export class PlaygroundEngine {
   private objects: PlaygroundObject[] = [
@@ -36,6 +41,8 @@ export class PlaygroundEngine {
 
   private selectedObjectId: string | null = null;
   private isDragging = false;
+  private isResizing = false;
+
   private previousPinching = false;
   private pinchLostAt: number | null = null;
 
@@ -44,17 +51,16 @@ export class PlaygroundEngine {
     y: 0,
   };
 
+  private previousHandDistance: number | null = null;
+
   update(
     cursor: CursorPosition | null,
     isPinching: boolean,
-    isActive: boolean
+    isActive: boolean,
+    secondaryHand: CursorPosition | null = null
   ): PlaygroundState {
     if (!isActive || !cursor) {
-      this.isDragging = false;
-      this.selectedObjectId = null;
-      this.previousPinching = false;
-      this.pinchLostAt = null;
-
+      this.resetInteraction();
       return this.getState();
     }
 
@@ -74,6 +80,12 @@ export class PlaygroundEngine {
           x: target.position.x - cursor.x,
           y: target.position.y - cursor.y,
         };
+
+        this.objects = this.objects.filter(
+          (object) => object.id !== target.id
+        );
+
+        this.objects.push(target);
       }
     }
 
@@ -90,15 +102,15 @@ export class PlaygroundEngine {
 
       if (releaseConfirmed) {
         this.isDragging = false;
+        this.isResizing = false;
         this.selectedObjectId = null;
         this.pinchLostAt = null;
+        this.previousHandDistance = null;
       }
     }
 
     if (this.isDragging && isPinching) {
-      const selectedObject = this.objects.find(
-        (object) => object.id === this.selectedObjectId
-      );
+      const selectedObject = this.getSelectedObject();
 
       if (selectedObject) {
         selectedObject.position = {
@@ -113,12 +125,62 @@ export class PlaygroundEngine {
             1 - selectedObject.halfSize
           ),
         };
+
+        if (secondaryHand) {
+          this.resizeObject(selectedObject, cursor, secondaryHand);
+        } else {
+          this.isResizing = false;
+          this.previousHandDistance = null;
+        }
       }
     }
 
     this.previousPinching = isPinching;
 
     return this.getState();
+  }
+
+  private resizeObject(
+    object: PlaygroundObject,
+    primaryHand: CursorPosition,
+    secondaryHand: CursorPosition
+  ): void {
+    const currentDistance = Math.hypot(
+      primaryHand.x - secondaryHand.x,
+      primaryHand.y - secondaryHand.y
+    );
+
+    if (this.previousHandDistance === null) {
+      this.previousHandDistance = currentDistance;
+      return;
+    }
+
+    const distanceDifference =
+      currentDistance - this.previousHandDistance;
+
+    object.halfSize = this.clamp(
+      object.halfSize + distanceDifference * RESIZE_SENSITIVITY,
+      MIN_HALF_SIZE,
+      MAX_HALF_SIZE
+    );
+
+    this.previousHandDistance = currentDistance;
+    this.isResizing = true;
+  }
+
+  private resetInteraction(): void {
+    this.isDragging = false;
+    this.isResizing = false;
+    this.selectedObjectId = null;
+    this.previousPinching = false;
+    this.pinchLostAt = null;
+    this.previousHandDistance = null;
+  }
+
+  private getSelectedObject(): PlaygroundObject | undefined {
+    return this.objects.find(
+      (object) => object.id === this.selectedObjectId
+    );
   }
 
   private findObjectAt(
@@ -157,6 +219,7 @@ export class PlaygroundEngine {
       })),
       selectedObjectId: this.selectedObjectId,
       isDragging: this.isDragging,
+      isResizing: this.isResizing,
     };
   }
 }
