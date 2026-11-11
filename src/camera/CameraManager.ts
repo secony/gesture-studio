@@ -6,6 +6,8 @@ export interface CameraDevice {
 
 export class CameraManager {
   private stream: MediaStream | null = null;
+  private videoElement: HTMLVideoElement | null = null;
+  private operationId = 0;
 
   async getAvailableCameras(): Promise<CameraDevice[]> {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -24,6 +26,9 @@ export class CameraManager {
   ): Promise<void> {
     this.stop();
 
+    const currentOperation = ++this.operationId;
+    this.videoElement = video;
+
     const videoConstraints: MediaTrackConstraints = {
       width: { ideal: 1280 },
       height: { ideal: 720 },
@@ -31,19 +36,38 @@ export class CameraManager {
       ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
     };
 
+    let newStream: MediaStream | null = null;
+
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      newStream = await navigator.mediaDevices.getUserMedia({
         video: videoConstraints,
         audio: false,
       });
 
-      video.srcObject = this.stream;
+      if (currentOperation !== this.operationId) {
+        newStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      this.stream = newStream;
+
+      video.srcObject = newStream;
       video.muted = true;
       video.playsInline = true;
 
       await video.play();
+
+      if (currentOperation !== this.operationId) {
+        this.stop();
+      }
     } catch (error) {
-      this.stop();
+      if (newStream) {
+        newStream.getTracks().forEach((track) => track.stop());
+      }
+
+      if (currentOperation === this.operationId) {
+        this.stop();
+      }
 
       throw new Error(
         `Não foi possível iniciar a câmera: ${
@@ -54,9 +78,21 @@ export class CameraManager {
   }
 
   stop(): void {
+    this.operationId++;
+
     this.stream?.getTracks().forEach((track) => track.stop());
 
     this.stream = null;
+
+    if (this.videoElement) {
+      if (this.videoElement.srcObject === this.stream) {
+        this.videoElement.srcObject = null;
+      } else {
+        this.videoElement.srcObject = null;
+      }
+    }
+
+    this.videoElement = null;
   }
 
   getStream(): MediaStream | null {

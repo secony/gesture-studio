@@ -57,6 +57,9 @@ export function HandTrackingView() {
     let lastCursorPosition: CursorPosition | null = null;
     let previousDragging = false;
 
+    let consecutiveFrameErrors = 0;
+    const MAX_CONSECUTIVE_FRAME_ERRORS = 3;
+
     async function startTracking() {
       try {
         const video = videoRef.current;
@@ -85,246 +88,293 @@ export function HandTrackingView() {
         function processFrame() {
           if (!active) return;
 
-          animationId = requestAnimationFrame(processFrame);
+          try {
+            const currentVideo = videoRef.current;
+            const canvas = canvasRef.current;
 
-          const currentVideo = videoRef.current;
-          const canvas = canvasRef.current;
+            if (!currentVideo || !canvas) return;
+            if (currentVideo.readyState < 2) return;
+            if (currentVideo.currentTime === lastVideoTime) return;
 
-          if (!currentVideo || !canvas) return;
-          if (currentVideo.readyState < 2) return;
-          if (currentVideo.currentTime === lastVideoTime) return;
+            lastVideoTime = currentVideo.currentTime;
 
-          lastVideoTime = currentVideo.currentTime;
+            const context = canvas.getContext("2d");
 
-          const context = canvas.getContext("2d");
-          if (!context) return;
+if (!context) {
+  throw new Error(
+    "Não foi possível obter o contexto 2D do Canvas."
+  );
+}
 
-          if (
-            canvas.width !== currentVideo.videoWidth ||
-            canvas.height !== currentVideo.videoHeight
-          ) {
-            canvas.width = currentVideo.videoWidth;
-            canvas.height = currentVideo.videoHeight;
-
-            if (containerRef.current) {
-              containerRef.current.style.aspectRatio =
-                `${currentVideo.videoWidth} / ${currentVideo.videoHeight}`;
-            }
-          }
-
-          const hands = tracker.detect(currentVideo);
-          const gestureFrame = gestureEngine.process(hands);
-          const currentGestures = gestureFrame.hands;
-
-          gestureFrame.events.forEach((event) => {
-            const interaction = interactionEngine.process(event);
-
-            if (!interaction) return;
-
-            const result = actionEngine.execute(interaction);
-
-            setActionResult(result);
-
-            console.log("[INTERACTION]", interaction);
-            console.log("[ACTION EXECUTED]", result);
-          });
-
-          const isActive = actionEngine.getMode() === "ACTIVE";
-
-          const rightHand = hands.find(
-            (hand) => hand.handedness === "Right"
-          );
-          const leftHand = hands.find(
-  (hand) => hand.handedness === "Left"
-);
-
-const leftIndexTip = leftHand?.landmarks[8];
-
-const secondaryHandPosition = leftIndexTip
-  ? {
-      x: leftIndexTip.x,
-      y: leftIndexTip.y,
-    }
-  : null;
-
-          const rightHandGesture = currentGestures.find(
-            (hand) => hand.handedness === "Right"
-          );
-
-          const isPinching =
-            rightHandGesture?.result.gesture === "PINCH";
-
-          if (isActive && rightHand) {
-            const indexTip = rightHand.landmarks[8];
-
-            if (indexTip) {
-              lastCursorPosition = cursorController.update(indexTip);
-            } else {
-              lastCursorPosition = null;
-              cursorController.reset();
-            }
-          } else {
-            cursorController.reset();
-            lastCursorPosition = null;
-          }
-
-          const playgroundState = playgroundEngine.update(
-  lastCursorPosition,
-  isPinching,
-  isActive,
-  secondaryHandPosition
-);
-
-          if (previousDragging !== playgroundState.isDragging) {
-            previousDragging = playgroundState.isDragging;
-            setIsDragging(previousDragging);
-
-            console.log(
-              "[PLAYGROUND]",
-              previousDragging ? "OBJECT GRABBED" : "OBJECT RELEASED"
-            );
-          }
-
-          setCursorPosition((previous) => {
             if (
-              previous?.x === lastCursorPosition?.x &&
-              previous?.y === lastCursorPosition?.y
+              canvas.width !== currentVideo.videoWidth ||
+              canvas.height !== currentVideo.videoHeight
             ) {
-              return previous;
+              canvas.width = currentVideo.videoWidth;
+              canvas.height = currentVideo.videoHeight;
+
+              if (containerRef.current) {
+                containerRef.current.style.aspectRatio =
+                  `${currentVideo.videoWidth} / ${currentVideo.videoHeight}`;
+              }
             }
 
-            return lastCursorPosition
-              ? { ...lastCursorPosition }
+            const hands = tracker.detect(currentVideo);
+            const gestureFrame = gestureEngine.process(hands);
+            const currentGestures = gestureFrame.hands;
+
+            gestureFrame.events.forEach((event) => {
+              const interaction = interactionEngine.process(event);
+
+              if (!interaction) return;
+
+              const result = actionEngine.execute(interaction);
+
+              setActionResult(result);
+
+              console.log("[INTERACTION]", interaction);
+              console.log("[ACTION EXECUTED]", result);
+            });
+
+            const isActive = actionEngine.getMode() === "ACTIVE";
+
+            const rightHand = hands.find(
+              (hand) => hand.handedness === "Right"
+            );
+
+            const leftHand = hands.find(
+              (hand) => hand.handedness === "Left"
+            );
+
+            const leftIndexTip = leftHand?.landmarks[8];
+
+            const secondaryHandPosition = leftIndexTip
+              ? {
+                  x: leftIndexTip.x,
+                  y: leftIndexTip.y,
+                }
               : null;
-          });
 
-          setHandCount((current) =>
-            current === hands.length ? current : hands.length
-          );
+            const rightHandGesture = currentGestures.find(
+              (hand) => hand.handedness === "Right"
+            );
 
-          setGestures((previous) => {
-            const unchanged =
-              previous.length === currentGestures.length &&
-              previous.every(
-                (item, index) =>
-                  item.handedness === currentGestures[index].handedness &&
-                  item.result.gesture ===
-                    currentGestures[index].result.gesture
-              );
+            const isPinching =
+              rightHandGesture?.result.gesture === "PINCH";
 
-            return unchanged ? previous : currentGestures;
-          });
+            if (isActive && rightHand) {
+              const indexTip = rightHand.landmarks[8];
 
-          context.clearRect(0, 0, canvas.width, canvas.height);
-
-          // Desenho das mãos
-          for (const hand of hands) {
-            const landmarks = hand.landmarks;
-            const color = HAND_COLORS[hand.handedness];
-
-            context.strokeStyle = color;
-            context.fillStyle = color;
-            context.lineWidth = 3;
-            context.lineCap = "round";
-
-            for (const [start, end] of HAND_CONNECTIONS) {
-              const pointA = landmarks[start];
-              const pointB = landmarks[end];
-
-              if (!pointA || !pointB) continue;
-
-              context.beginPath();
-              context.moveTo(
-                pointA.x * canvas.width,
-                pointA.y * canvas.height
-              );
-              context.lineTo(
-                pointB.x * canvas.width,
-                pointB.y * canvas.height
-              );
-              context.stroke();
+              if (indexTip) {
+                lastCursorPosition = cursorController.update(indexTip);
+              } else {
+                lastCursorPosition = null;
+                cursorController.reset();
+              }
+            } else {
+              cursorController.reset();
+              lastCursorPosition = null;
             }
 
-            for (const point of landmarks) {
-              context.beginPath();
-              context.arc(
-                point.x * canvas.width,
-                point.y * canvas.height,
-                5,
-                0,
-                Math.PI * 2
+            const playgroundState = playgroundEngine.update(
+              lastCursorPosition,
+              isPinching,
+              isActive,
+              secondaryHandPosition
+            );
+
+            if (previousDragging !== playgroundState.isDragging) {
+              previousDragging = playgroundState.isDragging;
+              setIsDragging(previousDragging);
+
+              console.log(
+                "[PLAYGROUND]",
+                previousDragging ? "OBJECT GRABBED" : "OBJECT RELEASED"
               );
+            }
+
+            setCursorPosition((previous) => {
+              if (
+                previous?.x === lastCursorPosition?.x &&
+                previous?.y === lastCursorPosition?.y
+              ) {
+                return previous;
+              }
+
+              return lastCursorPosition
+                ? { ...lastCursorPosition }
+                : null;
+            });
+
+            setHandCount((current) =>
+              current === hands.length ? current : hands.length
+            );
+
+            setGestures((previous) => {
+              const unchanged =
+                previous.length === currentGestures.length &&
+                previous.every(
+                  (item, index) =>
+                    item.handedness === currentGestures[index].handedness &&
+                    item.result.gesture ===
+                      currentGestures[index].result.gesture
+                );
+
+              return unchanged ? previous : currentGestures;
+            });
+
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Desenho das mãos
+            for (const hand of hands) {
+              const landmarks = hand.landmarks;
+              const color = HAND_COLORS[hand.handedness];
+
+              context.strokeStyle = color;
+              context.fillStyle = color;
+              context.lineWidth = 3;
+              context.lineCap = "round";
+
+              for (const [start, end] of HAND_CONNECTIONS) {
+                const pointA = landmarks[start];
+                const pointB = landmarks[end];
+
+                if (!pointA || !pointB) continue;
+
+                context.beginPath();
+                context.moveTo(
+                  pointA.x * canvas.width,
+                  pointA.y * canvas.height
+                );
+                context.lineTo(
+                  pointB.x * canvas.width,
+                  pointB.y * canvas.height
+                );
+                context.stroke();
+              }
+
+              for (const point of landmarks) {
+                context.beginPath();
+                context.arc(
+                  point.x * canvas.width,
+                  point.y * canvas.height,
+                  5,
+                  0,
+                  Math.PI * 2
+                );
+                context.fill();
+              }
+            }
+
+            // Objetos interativos do Playground
+            for (const object of playgroundState.objects) {
+              const objectX = object.position.x * canvas.width;
+              const objectY = object.position.y * canvas.height;
+
+              const objectWidth =
+                object.halfSize * 2 * canvas.width;
+
+              const objectHeight =
+                object.halfSize * 2 * canvas.height;
+
+              const isSelected =
+                playgroundState.selectedObjectId === object.id;
+
+              context.save();
+
+              context.shadowBlur = isSelected ? 35 : 15;
+              context.shadowColor = isSelected
+                ? "#4ADE80"
+                : "#00E5FF";
+
+              context.fillStyle = isSelected
+                ? "rgba(74, 222, 128, 0.25)"
+                : "rgba(0, 229, 255, 0.20)";
+
+              context.strokeStyle = isSelected
+                ? "#4ADE80"
+                : "#00E5FF";
+
+              context.lineWidth = isSelected ? 4 : 3;
+
+              context.beginPath();
+              context.rect(
+                objectX - objectWidth / 2,
+                objectY - objectHeight / 2,
+                objectWidth,
+                objectHeight
+              );
+
+              context.fill();
+              context.stroke();
+
+              context.restore();
+            }
+
+            // Cursor virtual
+            if (isActive && lastCursorPosition) {
+              const cursorX =
+                lastCursorPosition.x * canvas.width;
+
+              const cursorY =
+                lastCursorPosition.y * canvas.height;
+
+              context.beginPath();
+              context.arc(cursorX, cursorY, 13, 0, Math.PI * 2);
+              context.fillStyle = "#FFFFFF";
+              context.fill();
+
+              context.beginPath();
+              context.arc(cursorX, cursorY, 9, 0, Math.PI * 2);
+              context.fillStyle = "#00E5FF";
+              context.fill();
+
+              context.beginPath();
+              context.arc(cursorX, cursorY, 3, 0, Math.PI * 2);
+              context.fillStyle = "#080B12";
               context.fill();
             }
-          }
 
-          // Objetos interativos do Playground
-          for (const object of playgroundState.objects) {
-            const objectX = object.position.x * canvas.width;
-            const objectY = object.position.y * canvas.height;
+            // O processamento foi concluído sem erros.
+            consecutiveFrameErrors = 0;
+          } catch (err) {
+            consecutiveFrameErrors++;
 
-            const objectWidth =
-              object.halfSize * 2 * canvas.width;
-
-            const objectHeight =
-              object.halfSize * 2 * canvas.height;
-
-            const isSelected =
-              playgroundState.selectedObjectId === object.id;
-
-            context.save();
-
-            context.shadowBlur = isSelected ? 35 : 15;
-            context.shadowColor = isSelected
-              ? "#4ADE80"
-              : "#00E5FF";
-
-            context.fillStyle = isSelected
-              ? "rgba(74, 222, 128, 0.25)"
-              : "rgba(0, 229, 255, 0.20)";
-
-            context.strokeStyle = isSelected
-              ? "#4ADE80"
-              : "#00E5FF";
-
-            context.lineWidth = isSelected ? 4 : 3;
-
-            context.beginPath();
-            context.rect(
-              objectX - objectWidth / 2,
-              objectY - objectHeight / 2,
-              objectWidth,
-              objectHeight
+            console.warn(
+              `[TRACKING] Falha no processamento (${consecutiveFrameErrors}/${MAX_CONSECUTIVE_FRAME_ERRORS})`,
+              err
             );
 
-            context.fill();
-            context.stroke();
+            if (
+              consecutiveFrameErrors >= MAX_CONSECUTIVE_FRAME_ERRORS
+            ) {
+              active = false;
 
-            context.restore();
-          }
+              cancelAnimationFrame(animationId);
 
-          // Cursor virtual
-          if (isActive && lastCursorPosition) {
-            const cursorX =
-              lastCursorPosition.x * canvas.width;
+              camera.stop();
+              tracker.close();
+              cursorController.reset();
 
-            const cursorY =
-              lastCursorPosition.y * canvas.height;
+              setStatus("error");
+              setError(
+                `Rastreamento interrompido após ${MAX_CONSECUTIVE_FRAME_ERRORS} falhas consecutivas. ${
+                  err instanceof Error
+                    ? err.message
+                    : "Erro desconhecido."
+                }`
+              );
 
-            context.beginPath();
-            context.arc(cursorX, cursorY, 13, 0, Math.PI * 2);
-            context.fillStyle = "#FFFFFF";
-            context.fill();
-
-            context.beginPath();
-            context.arc(cursorX, cursorY, 9, 0, Math.PI * 2);
-            context.fillStyle = "#00E5FF";
-            context.fill();
-
-            context.beginPath();
-            context.arc(cursorX, cursorY, 3, 0, Math.PI * 2);
-            context.fillStyle = "#080B12";
-            context.fill();
+              setHandCount(0);
+              setGestures([]);
+              setCursorPosition(null);
+              setIsDragging(false);
+              setActionResult(null);
+            }
+          } finally {
+            if (active) {
+              animationId = requestAnimationFrame(processFrame);
+            }
           }
         }
 

@@ -1,4 +1,3 @@
-
 import { HandTrackingView } from "./components/HandTrackingView";
 
 function App() {

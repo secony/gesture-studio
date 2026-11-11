@@ -23,7 +23,7 @@ export class HandTracker {
 
   async initialize(): Promise<void> {
     const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.2/wasm"
     );
 
     const options = {
