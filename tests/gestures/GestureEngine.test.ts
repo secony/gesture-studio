@@ -1,4 +1,3 @@
-
 import { describe, expect, it } from "vitest";
 import { GestureEngine } from "../../src/gestures/GestureEngine";
 import type { HandLandmark, TrackedHand } from "../../src/tracking/HandTracker";
@@ -69,6 +68,19 @@ function createPinch(): TrackedHand {
   return hand;
 }
 
+function createHandAtPinchDistance(normalizedDistance: number): TrackedHand {
+  const hand = createOpenHand();
+
+  // A escala da mão é 1, então esta distância corresponde ao valor normalizado.
+  hand.landmarks[4] = {
+    x: normalizedDistance,
+    y: 2,
+    z: 0,
+  };
+
+  return hand;
+}
+
 describe("GestureEngine", () => {
   it("deve estabilizar um gesto após 3 frames consecutivos", () => {
     const engine = new GestureEngine();
@@ -127,7 +139,7 @@ describe("GestureEngine", () => {
     ]);
   });
 
-  it("deve exigir 6 frames para liberar uma pinça", () => {
+  it("deve exigir 3 frames para liberar uma pinça", () => {
     const engine = new GestureEngine();
     const pinch = createPinch();
     const openHand = createOpenHand();
@@ -141,21 +153,40 @@ describe("GestureEngine", () => {
 
     const releaseFrames = [];
 
-    for (let index = 0; index < 6; index++) {
+    for (let index = 0; index < 3; index++) {
       releaseFrames.push(engine.process([openHand]));
     }
 
-    for (let index = 0; index < 5; index++) {
+    for (let index = 0; index < 2; index++) {
       expect(releaseFrames[index].hands[0].result.gesture).toBe("PINCH");
       expect(releaseFrames[index].events).toHaveLength(0);
     }
 
-    expect(releaseFrames[5].hands[0].result.gesture).toBe("OPEN_HAND");
+    expect(releaseFrames[2].hands[0].result.gesture).toBe("OPEN_HAND");
 
-    expect(releaseFrames[5].events.map((event) => event.type)).toEqual([
+    expect(releaseFrames[2].events.map((event) => event.type)).toEqual([
       "GESTURE_ENDED",
       "GESTURE_STARTED",
     ]);
+  });
+
+  it("deve manter a pinça estável quando a distância oscila entre os limites", () => {
+    const engine = new GestureEngine();
+
+    engine.process([createPinch()]);
+    engine.process([createPinch()]);
+    const pinchStarted = engine.process([createPinch()]);
+
+    expect(pinchStarted.hands[0].result.gesture).toBe("PINCH");
+
+    const oscillatingDistances = [0.36, 0.39, 0.37, 0.41, 0.38, 0.40];
+
+    for (const distance of oscillatingDistances) {
+      const frame = engine.process([createHandAtPinchDistance(distance)]);
+
+      expect(frame.hands[0].result.gesture).toBe("PINCH");
+      expect(frame.events).toHaveLength(0);
+    }
   });
 
   it("deve tolerar até 5 frames sem detectar a mão", () => {

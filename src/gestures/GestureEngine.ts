@@ -1,4 +1,3 @@
-
 import type { TrackedHand } from "../tracking/HandTracker";
 import { GestureClassifier } from "./GestureClassifier";
 import type { GestureResult, GestureType } from "./GestureTypes";
@@ -33,7 +32,7 @@ interface HandHistory {
 }
 
 const REQUIRED_STABLE_FRAMES = 3;
-const REQUIRED_PINCH_RELEASE_FRAMES = 6;
+const REQUIRED_PINCH_RELEASE_FRAMES = 3;
 const MAX_MISSING_FRAMES = 5;
 
 export class GestureEngine {
@@ -56,9 +55,14 @@ export class GestureEngine {
 
       activeHands.add(key);
 
-      const current = this.classifier.classify(hand);
-
       let history = this.history.get(key);
+
+      // A classificação recebe o último gesto estabilizado para aplicar
+      // o limite de manutenção da pinça quando ela já está ativa.
+      const current = this.classifier.classify(
+        hand,
+        history?.stableResult.gesture
+      );
 
       if (!history) {
         history = {

@@ -14,7 +14,7 @@ export interface PlaygroundState {
   isResizing: boolean;
 }
 
-const PINCH_RELEASE_DELAY_MS = 150;
+const PINCH_RELEASE_DELAY_MS = 50;
 
 const MIN_HALF_SIZE = 0.05;
 const MAX_HALF_SIZE = 0.18;

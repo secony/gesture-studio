@@ -1,22 +1,19 @@
-
 import type { HandLandmark, TrackedHand } from "../tracking/HandTracker";
 import type {
   GestureResult,
   GestureThresholds,
+  GestureType,
 } from "./GestureTypes";
 
 const DEFAULT_THRESHOLDS: GestureThresholds = {
   pinch: 0.35,
+  pinchRelease: 0.42,
   fingerExtended: 1.1,
   fingerCurled: 1.05,
 };
 
 function distance(a: HandLandmark, b: HandLandmark): number {
-  return Math.hypot(
-    a.x - b.x,
-    a.y - b.y,
-    a.z - b.z
-  );
+  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
 function isFingerExtended(
@@ -40,7 +37,10 @@ export class GestureClassifier {
     this.thresholds = thresholds;
   }
 
-  classify(hand: TrackedHand): GestureResult {
+  classify(
+    hand: TrackedHand,
+    previousGesture: GestureType = "UNKNOWN"
+  ): GestureResult {
     const landmarks = hand.landmarks;
 
     if (landmarks.length !== 21) {
@@ -61,19 +61,21 @@ export class GestureClassifier {
     ];
 
     const extendedCount = fingerStates.filter(Boolean).length;
+    const pinchDistance = distance(landmarks[4], landmarks[8]) / handScale;
 
-    const pinchDistance =
-      distance(landmarks[4], landmarks[8]) / handScale;
+    // Usa uma margem maior para manter uma pinça já reconhecida.
+    // Isso evita alternância rápida quando a distância oscila perto do limite.
+    const pinchThreshold =
+      previousGesture === "PINCH"
+        ? this.thresholds.pinchRelease
+        : this.thresholds.pinch;
 
-    // Prioriza a pinça, independentemente dos outros dedos.
-    if (pinchDistance < this.thresholds.pinch) {
+    if (pinchDistance < pinchThreshold) {
       return {
         gesture: "PINCH",
         confidence: Math.min(
           1,
-          0.5 +
-            (this.thresholds.pinch - pinchDistance) /
-              this.thresholds.pinch
+          0.5 + (pinchThreshold - pinchDistance) / pinchThreshold
         ),
       };
     }

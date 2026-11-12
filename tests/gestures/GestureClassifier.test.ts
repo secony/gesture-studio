@@ -1,8 +1,6 @@
-
 import { describe, expect, it } from "vitest";
 import { GestureClassifier } from "../../src/gestures/GestureClassifier";
-import type { HandLandmark } from "../../src/tracking/HandTracker";
-import type { TrackedHand } from "../../src/tracking/HandTracker";
+import type { HandLandmark, TrackedHand } from "../../src/tracking/HandTracker";
 
 function createHand(landmarks: HandLandmark[]): TrackedHand {
   return {
@@ -68,11 +66,22 @@ function createPinch(): TrackedHand {
   const hand = createOpenHand();
 
   hand.landmarks[4] = { x: 0.01, y: 2, z: 0 };
-  hand.landmarks[8] = { x: 0, y: 2, z: 0 };
 
   return hand;
 }
 
+function createHandAtPinchDistance(normalizedDistance: number): TrackedHand {
+  const hand = createOpenHand();
+
+  // A escala da mão é 1, então esta distância corresponde ao valor normalizado.
+  hand.landmarks[4] = {
+    x: normalizedDistance,
+    y: 2,
+    z: 0,
+  };
+
+  return hand;
+}
 
 function createUnknown(): TrackedHand {
   const landmarks = createLandmarks();
@@ -98,7 +107,6 @@ function createUnknown(): TrackedHand {
   return createHand(landmarks);
 }
 
-
 describe("GestureClassifier", () => {
   const classifier = new GestureClassifier();
 
@@ -122,6 +130,33 @@ describe("GestureClassifier", () => {
     expect(result.gesture).toBe("PINCH");
     expect(result.confidence).toBeGreaterThan(0);
     expect(result.confidence).toBeLessThanOrEqual(1);
+  });
+
+  it("deve manter uma pinça ativa até o limite de soltura", () => {
+    const result = classifier.classify(
+      createHandAtPinchDistance(0.38),
+      "PINCH"
+    );
+
+    expect(result.gesture).toBe("PINCH");
+  });
+
+  it("não deve iniciar uma pinça fora do limite de entrada", () => {
+    const result = classifier.classify(
+      createHandAtPinchDistance(0.38),
+      "UNKNOWN"
+    );
+
+    expect(result.gesture).toBe("OPEN_HAND");
+  });
+
+  it("deve liberar a pinça quando ultrapassar o limite de soltura", () => {
+    const result = classifier.classify(
+      createHandAtPinchDistance(0.43),
+      "PINCH"
+    );
+
+    expect(result.gesture).toBe("OPEN_HAND");
   });
 
   it("deve retornar UNKNOWN para uma posição intermediária", () => {
