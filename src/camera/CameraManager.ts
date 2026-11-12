@@ -57,17 +57,18 @@ export class CameraManager {
 
       await video.play();
 
+      // Operações antigas não podem interromper a câmera atual.
       if (currentOperation !== this.operationId) {
-        this.stop();
+        return;
       }
     } catch (error) {
-      if (newStream) {
-        newStream.getTracks().forEach((track) => track.stop());
+      // Uma operação obsoleta não deve afetar a operação atual.
+      if (currentOperation !== this.operationId) {
+        newStream?.getTracks().forEach((track) => track.stop());
+        return;
       }
 
-      if (currentOperation === this.operationId) {
-        this.stop();
-      }
+      this.stop();
 
       throw new Error(
         `Não foi possível iniciar a câmera: ${
@@ -85,11 +86,7 @@ export class CameraManager {
     this.stream = null;
 
     if (this.videoElement) {
-      if (this.videoElement.srcObject === this.stream) {
-        this.videoElement.srcObject = null;
-      } else {
-        this.videoElement.srcObject = null;
-      }
+      this.videoElement.srcObject = null;
     }
 
     this.videoElement = null;

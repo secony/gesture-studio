@@ -164,6 +164,20 @@ export class PlaygroundEngine {
       MAX_HALF_SIZE
     );
 
+    // Mantém o objeto dentro da área após o redimensionamento.
+    object.position = {
+      x: this.clamp(
+        object.position.x,
+        object.halfSize,
+        1 - object.halfSize
+      ),
+      y: this.clamp(
+        object.position.y,
+        object.halfSize,
+        1 - object.halfSize
+      ),
+    };
+
     this.previousHandDistance = currentDistance;
     this.isResizing = true;
   }
