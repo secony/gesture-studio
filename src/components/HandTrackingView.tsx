@@ -66,6 +66,7 @@ export function HandTrackingView() {
     let lastVideoTime = -1;
     let lastCursorPosition: CursorPosition | null = null;
     let previousDragging = false;
+    let lastMetricsLogAt = performance.now();
 
     let consecutiveFrameErrors = 0;
     const MAX_CONSECUTIVE_FRAME_ERRORS = 3;
@@ -383,6 +384,15 @@ trackingMetrics.recordFrame(
   frameFinishedAt - frameStartedAt,
   frameFinishedAt
 );
+if (frameFinishedAt - lastMetricsLogAt >= 1000) {
+  console.log(
+    "[TRACKING METRICS]",
+    trackingMetrics.getSnapshot(frameFinishedAt)
+  );
+
+  lastMetricsLogAt = frameFinishedAt;
+}
+
 
 // O processamento foi concluído sem erros.
 consecutiveFrameErrors = 0;
