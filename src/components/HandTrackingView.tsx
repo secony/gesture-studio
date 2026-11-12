@@ -156,6 +156,12 @@ const inferenceMs = performance.now() - inferenceStartedAt;
             const rightHand = hands.find(
               (hand) => hand.handedness === "Right"
             );
+            const trackingTimestamp = performance.now();
+
+trackingMetrics.recordTracking(
+  Boolean(rightHand),
+  trackingTimestamp
+);
 
             const leftHand = hands.find(
               (hand) => hand.handedness === "Left"
