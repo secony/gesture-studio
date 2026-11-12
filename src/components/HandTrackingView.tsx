@@ -185,22 +185,31 @@ trackingMetrics.recordTracking(
 
             // Atualização do cursor com One Euro Filter.
             if (isActive && rightHand) {
-              const indexTip = rightHand.landmarks[8];
+  const indexTip = rightHand.landmarks[8];
 
-              if (indexTip) {
-                lastCursorPosition = cursorController.update(
-                  indexTip,
-                  performance.now()
-                );
-              } else {
-                lastCursorPosition = null;
-                cursorController.reset();
-              }
-            } else {
-              cursorController.reset();
-              lastCursorPosition = null;
-            }
+  if (indexTip) {
+    const cursorTimestamp = performance.now();
 
+    lastCursorPosition = cursorController.update(
+      indexTip,
+      cursorTimestamp
+    );
+
+    if (lastCursorPosition) {
+      trackingMetrics.recordCursor(
+        indexTip,
+        lastCursorPosition,
+        cursorTimestamp
+      );
+    }
+  } else {
+    lastCursorPosition = null;
+    cursorController.reset();
+  }
+} else {
+  cursorController.reset();
+  lastCursorPosition = null;
+}
             // O One Euro controla o Playground.
             const playgroundState = playgroundEngine.update(
               lastCursorPosition,
