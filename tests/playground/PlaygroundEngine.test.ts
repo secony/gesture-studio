@@ -146,7 +146,7 @@ describe("PlaygroundEngine", () => {
     clock.mockReturnValue(1001);
     engine.update(createPosition(0.3, 0.5), false, true);
 
-    clock.mockReturnValue(1150);
+    clock.mockReturnValue(1050);
     const state = engine.update(
       createPosition(0.3, 0.5),
       false,
@@ -157,7 +157,7 @@ describe("PlaygroundEngine", () => {
     expect(state.selectedObjectId).toBe("object-1");
   });
 
-  it("deve encerrar o arraste após 150 ms sem pinça", () => {
+  it("deve encerrar o arraste após 50 ms sem pinça", () => {
     const engine = new PlaygroundEngine();
     const clock = vi.spyOn(performance, "now");
 
@@ -167,7 +167,7 @@ describe("PlaygroundEngine", () => {
     clock.mockReturnValue(1001);
     engine.update(createPosition(0.3, 0.5), false, true);
 
-    clock.mockReturnValue(1151);
+    clock.mockReturnValue(1051);
     const state = engine.update(
       createPosition(0.3, 0.5),
       false,
