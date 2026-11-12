@@ -1,9 +1,8 @@
-
 # Registro de decisões técnicas — Gesture Studio
 
 Este documento registra decisões arquiteturais e técnicas relevantes para preservar o contexto do desenvolvimento.
 
-As decisões podem ser revisadas quando novas evidências justificarem mudanças.
+As decisões podem ser revisadas quando novas evidências justificarem mudanças. Decisões substituídas permanecem no histórico para explicar a evolução do projeto.
 
 ## DEC-001 — React e TypeScript como base
 
@@ -71,23 +70,19 @@ Os valores atuais devem ser preservados até que testes demonstrem necessidade d
 
 ## DEC-005 — Suavização inicial por EMA
 
-**Status:** Adotada.
+**Status:** Substituída pela DEC-011.
 
-**Decisão:**
+**Decisão histórica:**
 
-Utilizar suavização exponencial no CursorController.
+A implementação inicial utilizava suavização exponencial (EMA) no CursorController, com fator padrão de 0.25.
 
-**Configuração atual:**
-
-- Fator padrão: 0.25.
-
-**Justificativa:**
+**Justificativa histórica:**
 
 Reduzir pequenas oscilações na posição do cursor virtual.
 
-**Evolução futura:**
+**Evolução:**
 
-Avaliar One Euro Filter, comparando jitter, latência e responsividade antes de substituir a implementação atual.
+O EMA foi mantido como referência experimental. Após benchmark sintético e duas rodadas de comparação com câmera real, o One Euro Filter foi escolhido como controlador principal. Os testes do EMA permanecem no projeto para referência e regressão comparativa.
 
 ---
 
@@ -182,6 +177,34 @@ Toda mudança deve ser implementada e validada em etapas pequenas.
 **Justificativa:**
 
 Evitar regressões e preservar comportamentos já validados.
+
+---
+
+## DEC-011 — One Euro Filter como controlador principal do cursor
+
+**Status:** Adotada; integração técnica concluída, regressão manual pós-integração pendente.
+
+**Decisão:**
+
+Utilizar OneEuroCursorController como único controlador do cursor virtual e como fonte da posição enviada ao Playground.
+
+Configuração inicial adotada:
+
+- minCutoff: 10.
+- beta: 4.
+- derivativeCutoff: 1 (valor padrão da implementação).
+
+O EMA não participa mais do processamento principal do cursor. Sua implementação e seus testes são preservados como referência histórica e experimental.
+
+**Justificativa:**
+
+O benchmark sintético mostrou menor erro nos cenários de movimento para a configuração One Euro 10/4, embora o EMA tenha apresentado menor jitter no cenário sintético de mão parada.
+
+Em duas rodadas de comparação com câmera real, o usuário observou melhor estabilidade e responsividade no One Euro. A decisão combina essas evidências, sem tratar o benchmark sintético isoladamente como prova de superioridade universal.
+
+**Critério de validação restante:**
+
+Concluir a regressão com câmera real após a integração, verificando movimentação, arraste, redimensionamento, soltura, perda de tracking e limites do Playground. Não alterar os parâmetros sem evidência.
 
 ---
 
