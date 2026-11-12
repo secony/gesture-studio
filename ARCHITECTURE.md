@@ -1,4 +1,3 @@
-
 # Arquitetura — Gesture Studio
 
 ## 1. Visão geral
@@ -52,7 +51,7 @@ Responsável pelo reconhecimento e estabilização dos gestos.
 
 **GestureClassifier.ts**
 
-Classifica os landmarks em gestos reconhecidos.
+Classifica os landmarks em gestos reconhecidos. É utilizado internamente pelo GestureEngine, não sendo uma etapa independente do fluxo principal.
 
 Gestos implementados:
 
@@ -63,6 +62,7 @@ Gestos implementados:
 
 **GestureEngine.ts**
 
+- Utiliza o GestureClassifier para classificar os gestos.
 - Mantém histórico dos gestos.
 - Estabiliza classificações ao longo dos frames.
 - Emite eventos de início e término.
@@ -74,14 +74,30 @@ Define os tipos e contratos relacionados aos gestos.
 
 ### `cursor/`
 
-Responsável pelo controle do cursor virtual.
+Responsável pelo processamento da posição do cursor virtual.
+
+**OneEuroFilter.ts**
+
+Implementa o filtro One Euro unidimensional:
+
+- Estima a velocidade da variação do sinal.
+- Suaviza a derivada.
+- Ajusta o cutoff do filtro conforme a velocidade.
+- Aplica suavização adaptativa ao valor de entrada.
+- Permite reinicialização do estado.
+
+**OneEuroCursorController.ts**
+
+- Mantém filtros independentes para os eixos X e Y.
+- Recebe landmarks e timestamps.
+- Normaliza as coordenadas para o intervalo de 0 a 1.
+- Fornece a posição filtrada ao componente de integração.
+
+A configuração atualmente adotada no HandTrackingView é `minCutoff: 10`, `beta: 4` e `derivativeCutoff: 1` (padrão).
 
 **CursorController.ts**
 
-- Converte a posição de um landmark em coordenadas normalizadas.
-- Aplica suavização exponencial (EMA).
-- Limita as coordenadas ao intervalo de 0 a 1.
-- Permite reinicialização do estado.
+Contém a implementação anterior baseada em EMA. Não é o controlador utilizado no fluxo principal atual; sua implementação e seus testes são preservados como referência experimental e histórica.
 
 ### `interaction/`
 
@@ -126,6 +142,8 @@ Responsável pelas interações com objetos do ambiente 2D.
 - Controla a soltura da interação.
 - Restringe os objetos aos limites do ambiente.
 
+A posição principal do cursor recebida pelo Playground é filtrada pelo One Euro Cursor Controller.
+
 ### `components/`
 
 Responsável pela integração dos módulos com a interface React.
@@ -138,7 +156,8 @@ Atualmente funciona como ponto central de integração:
 - Inicializa e encerra o rastreamento.
 - Executa o processamento dos frames.
 - Encaminha os resultados aos motores.
-- Atualiza o cursor e o Playground.
+- Atualiza o One Euro Cursor Controller.
+- Encaminha a posição filtrada e os estados gestuais ao Playground.
 - Renderiza os resultados visuais.
 - Apresenta estados e erros do sistema.
 
@@ -157,25 +176,27 @@ HandTracker
    |
    v
 GestureEngine
-   |
-   +------------------------+
-   |                        |
-   v                        v
-InteractionEngine       CursorController
-   |                        |
-   v                        v
-ActionEngine             PlaygroundEngine
-   |                        |
-   +------------+-----------+
+   |                         |
+   | eventos discretos       | landmarks e estados gestuais
+   v                         v
+InteractionEngine       OneEuroCursorController
+   |                         |
+   v                         | posição filtrada
+ActionEngine                 v
+                         PlaygroundEngine
+   |                         |
+   +------------+------------+
                 |
                 v
-          Interface React
+          HandTrackingView
                 |
                 v
              Canvas 2D
 ```
 
 O fluxo representa as responsabilidades gerais. A integração efetiva entre os motores é realizada atualmente pelo componente `HandTrackingView.tsx`.
+
+O GestureClassifier é chamado internamente pelo GestureEngine. O OneEuroCursorController processa a posição contínua do cursor separadamente do caminho de eventos discretos de interação.
 
 ## 4. Modelagem de gestos e interações
 
@@ -194,7 +215,7 @@ São utilizados para ações como ativar e desativar o modo de interação.
 
 ### Estados contínuos
 
-O Playground utiliza o estado estabilizado do gesto PINCH em conjunto com a posição das mãos.
+O Playground utiliza a posição filtrada pelo One Euro Cursor Controller, o estado estabilizado do gesto PINCH e a posição da segunda mão.
 
 Isso permite identificar:
 
@@ -218,6 +239,7 @@ Por isso, o sistema precisa controlar:
 - Liberação dos recursos do MediaPipe.
 - Prevenção de operações concorrentes obsoletas.
 - Tratamento de falhas consecutivas no processamento.
+- Reinicialização dos filtros quando a interação ou o tracking deixam de estar ativos.
 
 Atualmente, o processamento interrompe o rastreamento após três falhas consecutivas, apresentando o estado de erro na interface.
 
@@ -233,22 +255,25 @@ npm run lint
 npm run build
 ```
 
+Os testes de CursorController preservam a referência do EMA. Os testes de OneEuroFilter e OneEuroCursorController verificam a implementação atualmente adotada. O teste comparativo mantém cenários sintéticos para análise experimental dos filtros.
+
 Testes automatizados não substituem a validação com câmera e mãos reais.
 
 Mudanças relacionadas a rastreamento, gestos e interação devem ser verificadas também em execução real.
 
 ## 7. Evolução arquitetural
 
-As próximas evoluções devem preservar a separação de responsabilidades.
+As próximas evoluções devem preservar a separação de responsabilidades e seguir o roadmap do projeto.
 
-Possíveis melhorias:
+Frentes previstas:
 
-- Avaliar One Euro Filter para suavização adaptativa.
-- Definir métricas de desempenho.
-- Tornar mais explícito o contrato entre intenções de interação e operações do Playground.
+- Definir métricas de desempenho e confiabilidade.
+- Validar o rastreamento em condições variadas.
+- Consolidar o motor de interação.
 - Expandir as experiências 2D.
 - Introduzir experiências 3D com Three.js.
 - Melhorar calibração e personalização.
 - Avaliar processamento em Web Worker mediante evidências de desempenho.
+- Preparar o produto para distribuição e expansão.
 
 Essas melhorias não devem ser implementadas antes da validação de sua necessidade e impacto.
