@@ -11,6 +11,7 @@ import type { ActionExecutionResult } from "../actions/ActionEngine";
 import type { CursorPosition } from "../cursor/CursorController";
 import { OneEuroCursorController } from "../cursor/OneEuroCursorController";
 import { PlaygroundEngine } from "../playground/PlaygroundEngine";
+import { TrackingMetrics } from "../metrics/TrackingMetrics";
 
 type TrackingStatus = "initializing" | "running" | "error";
 
@@ -56,6 +57,9 @@ export function HandTrackingView() {
     });
 
     const playgroundEngine = new PlaygroundEngine();
+
+    // Coletor independente de métricas de rastreamento.
+    const trackingMetrics = new TrackingMetrics();
 
     let active = true;
     let animationId = 0;
@@ -103,6 +107,7 @@ export function HandTrackingView() {
             if (currentVideo.currentTime === lastVideoTime) return;
 
             lastVideoTime = currentVideo.currentTime;
+            const frameStartedAt = performance.now();
 
             const context = canvas.getContext("2d");
 
@@ -125,7 +130,11 @@ export function HandTrackingView() {
               }
             }
 
-            const hands = tracker.detect(currentVideo);
+            const inferenceStartedAt = performance.now();
+
+const hands = tracker.detect(currentVideo);
+
+const inferenceMs = performance.now() - inferenceStartedAt;
             const gestureFrame = gestureEngine.process(hands);
             const currentGestures = gestureFrame.hands;
 
@@ -351,7 +360,17 @@ export function HandTrackingView() {
             }
 
             // O processamento foi concluído sem erros.
-            consecutiveFrameErrors = 0;
+            // Registro das métricas do frame processado.
+const frameFinishedAt = performance.now();
+
+trackingMetrics.recordFrame(
+  inferenceMs,
+  frameFinishedAt - frameStartedAt,
+  frameFinishedAt
+);
+
+// O processamento foi concluído sem erros.
+consecutiveFrameErrors = 0;
           } catch (err) {
             consecutiveFrameErrors++;
 
@@ -417,6 +436,7 @@ export function HandTrackingView() {
       camera.stop();
       tracker.close();
       cursorController.reset();
+      trackingMetrics.reset();
     };
   }, []);
 
@@ -589,7 +609,6 @@ export function HandTrackingView() {
           border: "1px solid #263449",
           borderRadius: "12px",
           background: "#111827",
-          
         }}
       >
         <video
