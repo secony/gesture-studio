@@ -234,7 +234,7 @@ export function HandTrackingView() {
               lastCursorPosition,
               isPinching,
               isActive,
-              secondaryHandPosition
+              rightHandTemporarilyMissing ? null : secondaryHandPosition
             );
 
             if (previousDragging !== playgroundState.isDragging) {

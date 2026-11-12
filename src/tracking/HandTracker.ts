@@ -82,11 +82,9 @@ export class HandTracker {
       const category = result.handedness[index]?.[0]?.categoryName;
 
 const handedness: Handedness =
-  category === "Left"
-    ? "Right"
-    : category === "Right"
-      ? "Left"
-      : "Unknown";
+  category === "Left" || category === "Right"
+    ? category
+    : "Unknown";
 
       return {
         landmarks,
