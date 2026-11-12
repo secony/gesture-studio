@@ -19,7 +19,12 @@ export interface HandGesture {
 }
 
 export interface GestureFrame {
+  /** Mãos efetivamente detectadas no frame atual. */
   hands: HandGesture[];
+
+  /** Gestos preservados durante perdas temporárias de detecção. */
+  missingHands: HandGesture[];
+
   events: GestureEvent[];
 }
 
@@ -46,6 +51,7 @@ export class GestureEngine {
   process(hands: TrackedHand[]): GestureFrame {
     const activeHands = new Set<string>();
     const events: GestureEvent[] = [];
+    const missingHands: HandGesture[] = [];
 
     const results = hands.map((hand, index) => {
       const key =
@@ -57,8 +63,6 @@ export class GestureEngine {
 
       let history = this.history.get(key);
 
-      // A classificação recebe o último gesto estabilizado para aplicar
-      // o limite de manutenção da pinça quando ela já está ativa.
       const current = this.classifier.classify(
         hand,
         history?.stableResult.gesture
@@ -136,6 +140,11 @@ export class GestureEngine {
       history.missingFrames++;
 
       if (history.missingFrames <= MAX_MISSING_FRAMES) {
+        missingHands.push({
+          handedness: history.handedness,
+          result: history.stableResult,
+        });
+
         continue;
       }
 
@@ -155,6 +164,7 @@ export class GestureEngine {
 
     return {
       hands: results,
+      missingHands,
       events,
     };
   }

@@ -82,6 +82,64 @@ function createHandAtPinchDistance(normalizedDistance: number): TrackedHand {
 }
 
 describe("GestureEngine", () => {
+    it("deve preservar uma pinça durante até 5 frames sem detectar a mão", () => {
+    const engine = new GestureEngine();
+    const pinch = createPinch();
+
+    engine.process([pinch]);
+    engine.process([pinch]);
+
+    const pinchStarted = engine.process([pinch]);
+
+    expect(pinchStarted.hands[0].result.gesture).toBe("PINCH");
+
+    for (let index = 0; index < 5; index++) {
+      const frame = engine.process([]);
+
+      expect(frame.hands).toHaveLength(0);
+      expect(frame.missingHands).toEqual([
+        expect.objectContaining({
+          handedness: "Right",
+          result: expect.objectContaining({
+            gesture: "PINCH",
+          }),
+        }),
+      ]);
+
+      expect(frame.events).toHaveLength(0);
+    }
+
+    const recoveredFrame = engine.process([pinch]);
+
+    expect(recoveredFrame.hands[0].result.gesture).toBe("PINCH");
+    expect(recoveredFrame.missingHands).toHaveLength(0);
+    expect(recoveredFrame.events).toHaveLength(0);
+  });
+
+  it("deve encerrar a pinça e remover o gesto preservado após 6 frames ausentes", () => {
+    const engine = new GestureEngine();
+    const pinch = createPinch();
+
+    engine.process([pinch]);
+    engine.process([pinch]);
+    engine.process([pinch]);
+
+    for (let index = 0; index < 5; index++) {
+      engine.process([]);
+    }
+
+    const sixthMissingFrame = engine.process([]);
+
+    expect(sixthMissingFrame.missingHands).toHaveLength(0);
+
+    expect(sixthMissingFrame.events).toEqual([
+      expect.objectContaining({
+        type: "GESTURE_ENDED",
+        gesture: "PINCH",
+        handedness: "Right",
+      }),
+    ]);
+  });
   it("deve estabilizar um gesto após 3 frames consecutivos", () => {
     const engine = new GestureEngine();
     const hand = createOpenHand();

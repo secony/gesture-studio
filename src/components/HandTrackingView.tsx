@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { CameraManager } from "../camera/CameraManager";
 import { HandTracker } from "../tracking/HandTracker";
@@ -133,9 +132,10 @@ export function HandTrackingView() {
 
             const inferenceStartedAt = performance.now();
 
-const hands = tracker.detect(currentVideo);
+            const hands = tracker.detect(currentVideo);
 
-const inferenceMs = performance.now() - inferenceStartedAt;
+            const inferenceMs = performance.now() - inferenceStartedAt;
+
             const gestureFrame = gestureEngine.process(hands);
             const currentGestures = gestureFrame.hands;
 
@@ -157,12 +157,13 @@ const inferenceMs = performance.now() - inferenceStartedAt;
             const rightHand = hands.find(
               (hand) => hand.handedness === "Right"
             );
+
             const trackingTimestamp = performance.now();
 
-trackingMetrics.recordTracking(
-  Boolean(rightHand),
-  trackingTimestamp
-);
+            trackingMetrics.recordTracking(
+              Boolean(rightHand),
+              trackingTimestamp
+            );
 
             const leftHand = hands.find(
               (hand) => hand.handedness === "Left"
@@ -177,40 +178,57 @@ trackingMetrics.recordTracking(
                 }
               : null;
 
-            const rightHandGesture = currentGestures.find(
-              (hand) => hand.handedness === "Right"
-            );
+            // Usa o gesto atual ou o último gesto preservado
+            // durante a tolerância de perda da mão.
+            const rightHandGesture =
+              currentGestures.find(
+                (hand) => hand.handedness === "Right"
+              ) ??
+              gestureFrame.missingHands.find(
+                (hand) => hand.handedness === "Right"
+              );
 
             const isPinching =
               rightHandGesture?.result.gesture === "PINCH";
 
+            const rightHandTemporarilyMissing =
+              gestureFrame.missingHands.some(
+                (hand) => hand.handedness === "Right"
+              );
+
             // Atualização do cursor com One Euro Filter.
             if (isActive && rightHand) {
-  const indexTip = rightHand.landmarks[8];
+              const indexTip = rightHand.landmarks[8];
 
-  if (indexTip) {
-    const cursorTimestamp = performance.now();
+              if (indexTip) {
+                const cursorTimestamp = performance.now();
 
-    lastCursorPosition = cursorController.update(
-      indexTip,
-      cursorTimestamp
-    );
+                lastCursorPosition = cursorController.update(
+                  indexTip,
+                  cursorTimestamp
+                );
 
-    if (lastCursorPosition) {
-      trackingMetrics.recordCursor(
-        indexTip,
-        lastCursorPosition,
-        cursorTimestamp
-      );
-    }
-  } else {
-    lastCursorPosition = null;
-    cursorController.reset();
-  }
-} else {
-  cursorController.reset();
-  lastCursorPosition = null;
-}
+                trackingMetrics.recordCursor(
+                  indexTip,
+                  lastCursorPosition,
+                  cursorTimestamp
+                );
+              } else {
+                lastCursorPosition = null;
+                cursorController.reset();
+              }
+            } else if (
+              isActive &&
+              rightHandTemporarilyMissing
+            ) {
+              // Mantém a última posição e o estado do filtro.
+              // O cursor fica parado até a mão retornar.
+            } else {
+              // A tolerância terminou ou a interação foi desativada.
+              cursorController.reset();
+              lastCursorPosition = null;
+            }
+
             // O One Euro controla o Playground.
             const playgroundState = playgroundEngine.update(
               lastCursorPosition,
@@ -261,7 +279,7 @@ trackingMetrics.recordTracking(
 
             context.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Desenho das mãos.
+            // Desenho das mãos efetivamente detectadas.
             for (const hand of hands) {
               const landmarks = hand.landmarks;
               const color = HAND_COLORS[hand.handedness];
@@ -375,27 +393,25 @@ trackingMetrics.recordTracking(
               context.restore();
             }
 
-            // O processamento foi concluído sem erros.
             // Registro das métricas do frame processado.
-const frameFinishedAt = performance.now();
+            const frameFinishedAt = performance.now();
 
-trackingMetrics.recordFrame(
-  inferenceMs,
-  frameFinishedAt - frameStartedAt,
-  frameFinishedAt
-);
-if (frameFinishedAt - lastMetricsLogAt >= 1000) {
-  console.log(
-    "[TRACKING METRICS]",
-    trackingMetrics.getSnapshot(frameFinishedAt)
-  );
+            trackingMetrics.recordFrame(
+              inferenceMs,
+              frameFinishedAt - frameStartedAt,
+              frameFinishedAt
+            );
 
-  lastMetricsLogAt = frameFinishedAt;
-}
+            if (frameFinishedAt - lastMetricsLogAt >= 1000) {
+              console.log(
+                "[TRACKING METRICS]",
+                trackingMetrics.getSnapshot(frameFinishedAt)
+              );
 
+              lastMetricsLogAt = frameFinishedAt;
+            }
 
-// O processamento foi concluído sem erros.
-consecutiveFrameErrors = 0;
+            consecutiveFrameErrors = 0;
           } catch (err) {
             consecutiveFrameErrors++;
 
