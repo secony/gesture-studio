@@ -589,6 +589,7 @@ export function HandTrackingView() {
           border: "1px solid #263449",
           borderRadius: "12px",
           background: "#111827",
+          
         }}
       >
         <video
