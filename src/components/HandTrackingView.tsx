@@ -8,8 +8,8 @@ import type { HandGesture } from "../gestures/GestureEngine";
 import { InteractionEngine } from "../interaction/InteractionEngine";
 import { ActionEngine } from "../actions/ActionEngine";
 import type { ActionExecutionResult } from "../actions/ActionEngine";
-import { CursorController } from "../cursor/CursorController";
 import type { CursorPosition } from "../cursor/CursorController";
+import { OneEuroCursorController } from "../cursor/OneEuroCursorController";
 import { PlaygroundEngine } from "../playground/PlaygroundEngine";
 
 type TrackingStatus = "initializing" | "running" | "error";
@@ -48,7 +48,13 @@ export function HandTrackingView() {
     const gestureEngine = new GestureEngine();
     const interactionEngine = new InteractionEngine();
     const actionEngine = new ActionEngine();
-    const cursorController = new CursorController();
+
+    // One Euro Filter: controlador principal do cursor.
+    const cursorController = new OneEuroCursorController({
+      minCutoff: 10,
+      beta: 4,
+    });
+
     const playgroundEngine = new PlaygroundEngine();
 
     let active = true;
@@ -100,11 +106,11 @@ export function HandTrackingView() {
 
             const context = canvas.getContext("2d");
 
-if (!context) {
-  throw new Error(
-    "Não foi possível obter o contexto 2D do Canvas."
-  );
-}
+            if (!context) {
+              throw new Error(
+                "Não foi possível obter o contexto 2D do Canvas."
+              );
+            }
 
             if (
               canvas.width !== currentVideo.videoWidth ||
@@ -162,11 +168,15 @@ if (!context) {
             const isPinching =
               rightHandGesture?.result.gesture === "PINCH";
 
+            // Atualização do cursor com One Euro Filter.
             if (isActive && rightHand) {
               const indexTip = rightHand.landmarks[8];
 
               if (indexTip) {
-                lastCursorPosition = cursorController.update(indexTip);
+                lastCursorPosition = cursorController.update(
+                  indexTip,
+                  performance.now()
+                );
               } else {
                 lastCursorPosition = null;
                 cursorController.reset();
@@ -176,6 +186,7 @@ if (!context) {
               lastCursorPosition = null;
             }
 
+            // O One Euro controla o Playground.
             const playgroundState = playgroundEngine.update(
               lastCursorPosition,
               isPinching,
@@ -225,7 +236,7 @@ if (!context) {
 
             context.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Desenho das mãos
+            // Desenho das mãos.
             for (const hand of hands) {
               const landmarks = hand.landmarks;
               const color = HAND_COLORS[hand.handedness];
@@ -266,7 +277,7 @@ if (!context) {
               }
             }
 
-            // Objetos interativos do Playground
+            // Objetos interativos do Playground.
             for (const object of playgroundState.objects) {
               const objectX = object.position.x * canvas.width;
               const objectY = object.position.y * canvas.height;
@@ -311,7 +322,7 @@ if (!context) {
               context.restore();
             }
 
-            // Cursor virtual
+            // Cursor virtual controlado pelo One Euro.
             if (isActive && lastCursorPosition) {
               const cursorX =
                 lastCursorPosition.x * canvas.width;
@@ -319,20 +330,24 @@ if (!context) {
               const cursorY =
                 lastCursorPosition.y * canvas.height;
 
+              context.save();
+
               context.beginPath();
               context.arc(cursorX, cursorY, 13, 0, Math.PI * 2);
-              context.fillStyle = "#FFFFFF";
+              context.fillStyle = "#B388FF";
               context.fill();
 
               context.beginPath();
               context.arc(cursorX, cursorY, 9, 0, Math.PI * 2);
-              context.fillStyle = "#00E5FF";
+              context.fillStyle = "#FFFFFF";
               context.fill();
 
               context.beginPath();
               context.arc(cursorX, cursorY, 3, 0, Math.PI * 2);
               context.fillStyle = "#080B12";
               context.fill();
+
+              context.restore();
             }
 
             // O processamento foi concluído sem erros.
