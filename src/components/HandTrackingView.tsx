@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import { CameraManager } from "../camera/CameraManager";
 import { HandTracker } from "../tracking/HandTracker";
@@ -130,6 +131,9 @@ export function HandTrackingView() {
               }
             }
 
+            // Proporção real do Canvas para cálculos geométricos.
+            const canvasAspectRatio = canvas.width / canvas.height;
+
             const inferenceStartedAt = performance.now();
 
             const hands = tracker.detect(currentVideo);
@@ -229,12 +233,15 @@ export function HandTrackingView() {
               lastCursorPosition = null;
             }
 
-            // O One Euro controla o Playground.
+            // Playground: movimento, redimensionamento e rotação.
+            // A mão direita controla o cursor e a esquerda atua
+            // como referência para redimensionamento e rotação.
             const playgroundState = playgroundEngine.update(
               lastCursorPosition,
               isPinching,
               isActive,
-              rightHandTemporarilyMissing ? null : secondaryHandPosition
+              rightHandTemporarilyMissing ? null : secondaryHandPosition,
+              canvasAspectRatio
             );
 
             if (previousDragging !== playgroundState.isDragging) {
@@ -321,6 +328,8 @@ export function HandTrackingView() {
             }
 
             // Objetos interativos do Playground.
+            // A transformação é aplicada em torno do centro
+            // de cada objeto, preservando suas dimensões.
             for (const object of playgroundState.objects) {
               const objectX = object.position.x * canvas.width;
               const objectY = object.position.y * canvas.height;
@@ -335,6 +344,9 @@ export function HandTrackingView() {
                 playgroundState.selectedObjectId === object.id;
 
               context.save();
+
+              context.translate(objectX, objectY);
+              context.rotate(object.rotation);
 
               context.shadowBlur = isSelected ? 35 : 15;
               context.shadowColor = isSelected
@@ -353,8 +365,8 @@ export function HandTrackingView() {
 
               context.beginPath();
               context.rect(
-                objectX - objectWidth / 2,
-                objectY - objectHeight / 2,
+                -objectWidth / 2,
+                -objectHeight / 2,
                 objectWidth,
                 objectHeight
               );

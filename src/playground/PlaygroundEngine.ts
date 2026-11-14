@@ -5,6 +5,7 @@ export interface PlaygroundObject {
   id: string;
   position: CursorPosition;
   halfSize: number;
+  rotation: number;
 }
 
 export interface PlaygroundState {
@@ -12,6 +13,7 @@ export interface PlaygroundState {
   selectedObjectId: string | null;
   isDragging: boolean;
   isResizing: boolean;
+  isRotating: boolean;
 }
 
 const PINCH_RELEASE_DELAY_MS = 50;
@@ -19,6 +21,7 @@ const PINCH_RELEASE_DELAY_MS = 50;
 const MIN_HALF_SIZE = 0.05;
 const MAX_HALF_SIZE = 0.18;
 const RESIZE_SENSITIVITY = 0.5;
+const ROTATION_EPSILON = 0.00001;
 
 export class PlaygroundEngine {
   private objects: PlaygroundObject[] = [
@@ -26,22 +29,26 @@ export class PlaygroundEngine {
       id: "object-1",
       position: { x: 0.25, y: 0.5 },
       halfSize: 0.09,
+      rotation: 0,
     },
     {
       id: "object-2",
       position: { x: 0.5, y: 0.5 },
       halfSize: 0.09,
+      rotation: 0,
     },
     {
       id: "object-3",
       position: { x: 0.75, y: 0.5 },
       halfSize: 0.09,
+      rotation: 0,
     },
   ];
 
   private selectedObjectId: string | null = null;
   private isDragging = false;
   private isResizing = false;
+  private isRotating = false;
 
   private previousPinching = false;
   private pinchLostAt: number | null = null;
@@ -52,17 +59,24 @@ export class PlaygroundEngine {
   };
 
   private previousHandDistance: number | null = null;
+  private previousHandAngle: number | null = null;
 
   update(
     cursor: CursorPosition | null,
     isPinching: boolean,
     isActive: boolean,
-    secondaryHand: CursorPosition | null = null
+    secondaryHand: CursorPosition | null = null,
+    aspectRatio = 1
   ): PlaygroundState {
     if (!isActive || !cursor) {
       this.resetInteraction();
       return this.getState();
     }
+
+    const safeAspectRatio =
+      Number.isFinite(aspectRatio) && aspectRatio > 0
+        ? aspectRatio
+        : 1;
 
     const now = performance.now();
 
@@ -70,7 +84,7 @@ export class PlaygroundEngine {
       isPinching && !this.previousPinching;
 
     if (pinchStarted && !this.isDragging) {
-      const target = this.findObjectAt(cursor);
+      const target = this.findObjectAt(cursor, safeAspectRatio);
 
       if (target) {
         this.selectedObjectId = target.id;
@@ -103,9 +117,11 @@ export class PlaygroundEngine {
       if (releaseConfirmed) {
         this.isDragging = false;
         this.isResizing = false;
+        this.isRotating = false;
         this.selectedObjectId = null;
         this.pinchLostAt = null;
         this.previousHandDistance = null;
+        this.previousHandAngle = null;
       }
     }
 
@@ -114,23 +130,33 @@ export class PlaygroundEngine {
 
       if (selectedObject) {
         selectedObject.position = {
-          x: this.clamp(
-            cursor.x + this.grabOffset.x,
-            selectedObject.halfSize,
-            1 - selectedObject.halfSize
-          ),
-          y: this.clamp(
-            cursor.y + this.grabOffset.y,
-            selectedObject.halfSize,
-            1 - selectedObject.halfSize
-          ),
+          x: cursor.x + this.grabOffset.x,
+          y: cursor.y + this.grabOffset.y,
         };
 
+        this.clampObjectPosition(selectedObject, safeAspectRatio);
+
         if (secondaryHand) {
-          this.resizeObject(selectedObject, cursor, secondaryHand);
+          this.resizeObject(
+            selectedObject,
+            cursor,
+            secondaryHand,
+            safeAspectRatio
+          );
+
+          this.rotateObject(
+            selectedObject,
+            cursor,
+            secondaryHand,
+            safeAspectRatio
+          );
+
+          this.clampObjectPosition(selectedObject, safeAspectRatio);
         } else {
           this.isResizing = false;
+          this.isRotating = false;
           this.previousHandDistance = null;
+          this.previousHandAngle = null;
         }
       }
     }
@@ -143,10 +169,11 @@ export class PlaygroundEngine {
   private resizeObject(
     object: PlaygroundObject,
     primaryHand: CursorPosition,
-    secondaryHand: CursorPosition
+    secondaryHand: CursorPosition,
+    aspectRatio: number
   ): void {
     const currentDistance = Math.hypot(
-      primaryHand.x - secondaryHand.x,
+      (primaryHand.x - secondaryHand.x) * aspectRatio,
       primaryHand.y - secondaryHand.y
     );
 
@@ -164,31 +191,85 @@ export class PlaygroundEngine {
       MAX_HALF_SIZE
     );
 
-    // Mantém o objeto dentro da área após o redimensionamento.
+    this.previousHandDistance = currentDistance;
+    this.isResizing =
+      Math.abs(distanceDifference) > ROTATION_EPSILON;
+  }
+
+  private rotateObject(
+    object: PlaygroundObject,
+    primaryHand: CursorPosition,
+    secondaryHand: CursorPosition,
+    aspectRatio: number
+  ): void {
+    const deltaX =
+      (secondaryHand.x - primaryHand.x) * aspectRatio;
+
+    const deltaY =
+      secondaryHand.y - primaryHand.y;
+
+    const currentAngle = Math.atan2(deltaY, deltaX);
+
+    if (this.previousHandAngle === null) {
+      this.previousHandAngle = currentAngle;
+      return;
+    }
+
+    const angleDifference = this.normalizeAngle(
+      currentAngle - this.previousHandAngle
+    );
+
+    object.rotation = this.normalizeAngle(
+      object.rotation + angleDifference
+    );
+
+    this.previousHandAngle = currentAngle;
+    this.isRotating =
+      Math.abs(angleDifference) > ROTATION_EPSILON;
+  }
+
+  private normalizeAngle(angle: number): number {
+    return Math.atan2(Math.sin(angle), Math.cos(angle));
+  }
+
+  private clampObjectPosition(
+    object: PlaygroundObject,
+    aspectRatio: number
+  ): void {
+    const absCos = Math.abs(Math.cos(object.rotation));
+    const absSin = Math.abs(Math.sin(object.rotation));
+
+    const horizontalExtent =
+      object.halfSize *
+      (absCos + absSin / aspectRatio);
+
+    const verticalExtent =
+      object.halfSize *
+      (absSin * aspectRatio + absCos);
+
     object.position = {
       x: this.clamp(
         object.position.x,
-        object.halfSize,
-        1 - object.halfSize
+        horizontalExtent,
+        1 - horizontalExtent
       ),
       y: this.clamp(
         object.position.y,
-        object.halfSize,
-        1 - object.halfSize
+        verticalExtent,
+        1 - verticalExtent
       ),
     };
-
-    this.previousHandDistance = currentDistance;
-    this.isResizing = true;
   }
 
   private resetInteraction(): void {
     this.isDragging = false;
     this.isResizing = false;
+    this.isRotating = false;
     this.selectedObjectId = null;
     this.previousPinching = false;
     this.pinchLostAt = null;
     this.previousHandDistance = null;
+    this.previousHandAngle = null;
   }
 
   private getSelectedObject(): PlaygroundObject | undefined {
@@ -198,16 +279,29 @@ export class PlaygroundEngine {
   }
 
   private findObjectAt(
-    cursor: CursorPosition
+    cursor: CursorPosition,
+    aspectRatio: number
   ): PlaygroundObject | null {
     for (let index = this.objects.length - 1; index >= 0; index--) {
       const object = this.objects[index];
 
+      const deltaX =
+        (cursor.x - object.position.x) * aspectRatio;
+
+      const deltaY =
+        cursor.y - object.position.y;
+
+      const cos = Math.cos(object.rotation);
+      const sin = Math.sin(object.rotation);
+
+      const localX = deltaX * cos + deltaY * sin;
+      const localY = -deltaX * sin + deltaY * cos;
+
       const insideX =
-        Math.abs(cursor.x - object.position.x) <= object.halfSize;
+        Math.abs(localX) <= object.halfSize * aspectRatio;
 
       const insideY =
-        Math.abs(cursor.y - object.position.y) <= object.halfSize;
+        Math.abs(localY) <= object.halfSize;
 
       if (insideX && insideY) {
         return object;
@@ -234,6 +328,7 @@ export class PlaygroundEngine {
       selectedObjectId: this.selectedObjectId,
       isDragging: this.isDragging,
       isResizing: this.isResizing,
+      isRotating: this.isRotating,
     };
   }
 }

@@ -7,6 +7,17 @@ function createPosition(x: number, y: number): CursorPosition {
   return { x, y };
 }
 
+function createPointOnCircle(
+  center: CursorPosition,
+  radius: number,
+  angle: number
+): CursorPosition {
+  return {
+    x: center.x + radius * Math.cos(angle),
+    y: center.y + radius * Math.sin(angle),
+  };
+}
+
 function startDragging(
   engine: PlaygroundEngine,
   cursor = createPosition(0.25, 0.5),
@@ -30,6 +41,7 @@ describe("PlaygroundEngine", () => {
       id: "object-1",
       position: { x: 0.25, y: 0.5 },
       halfSize: 0.09,
+      rotation: 0,
     });
     expect(state.objects[1].id).toBe("object-2");
     expect(state.objects[2].id).toBe("object-3");
@@ -176,6 +188,7 @@ describe("PlaygroundEngine", () => {
 
     expect(state.isDragging).toBe(false);
     expect(state.isResizing).toBe(false);
+    expect(state.isRotating).toBe(false);
     expect(state.selectedObjectId).toBeNull();
   });
 
@@ -213,6 +226,7 @@ describe("PlaygroundEngine", () => {
 
     expect(state.isDragging).toBe(false);
     expect(state.isResizing).toBe(false);
+    expect(state.isRotating).toBe(false);
     expect(state.selectedObjectId).toBeNull();
   });
 
@@ -371,8 +385,10 @@ describe("PlaygroundEngine", () => {
     );
 
     expect(object?.halfSize).toBeCloseTo(0.09);
+    expect(object?.rotation).toBeCloseTo(0);
     expect(state.isDragging).toBe(true);
     expect(state.isResizing).toBe(false);
+    expect(state.isRotating).toBe(false);
   });
 
   it("deve retornar cópias dos objetos sem expor o estado interno", () => {
@@ -382,6 +398,7 @@ describe("PlaygroundEngine", () => {
 
     firstState.objects[0].position.x = 0.99;
     firstState.objects[0].halfSize = 0.18;
+    firstState.objects[0].rotation = 1;
     firstState.objects.pop();
 
     const secondState = engine.update(null, false, false);
@@ -389,6 +406,7 @@ describe("PlaygroundEngine", () => {
     expect(secondState.objects).toHaveLength(3);
     expect(secondState.objects[0].position.x).toBeCloseTo(0.25);
     expect(secondState.objects[0].halfSize).toBeCloseTo(0.09);
+    expect(secondState.objects[0].rotation).toBeCloseTo(0);
   });
 
   it("não deve permitir que o objeto redimensionado ultrapasse a área", () => {
@@ -413,5 +431,268 @@ describe("PlaygroundEngine", () => {
 
     expect(object).toBeDefined();
     expect(object!.position.x + object!.halfSize).toBeLessThanOrEqual(1);
+  });
+
+  // Testes de rotação
+
+  it("deve rotacionar o objeto no sentido positivo", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.25, 0.5);
+
+    startDragging(
+      engine,
+      center,
+      createPointOnCircle(center, 0.2, 0)
+    );
+
+    const state = engine.update(
+      center,
+      true,
+      true,
+      createPointOnCircle(center, 0.2, Math.PI / 2)
+    );
+
+    const object = state.objects.find(
+      (item) => item.id === "object-1"
+    );
+
+    expect(object?.rotation).toBeCloseTo(Math.PI / 2);
+    expect(state.isRotating).toBe(true);
+  });
+
+  it("deve rotacionar o objeto no sentido negativo", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.25, 0.5);
+
+    startDragging(
+      engine,
+      center,
+      createPointOnCircle(center, 0.2, 0)
+    );
+
+    const state = engine.update(
+      center,
+      true,
+      true,
+      createPointOnCircle(center, 0.2, -Math.PI / 2)
+    );
+
+    const object = state.objects.find(
+      (item) => item.id === "object-1"
+    );
+
+    expect(object?.rotation).toBeCloseTo(-Math.PI / 2);
+    expect(state.isRotating).toBe(true);
+  });
+
+  it("não deve aplicar rotação na primeira amostra da mão secundária", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.25, 0.5);
+
+    const state = startDragging(
+      engine,
+      center,
+      createPointOnCircle(center, 0.2, Math.PI / 3)
+    );
+
+    const object = state.objects.find(
+      (item) => item.id === "object-1"
+    );
+
+    expect(object?.rotation).toBeCloseTo(0);
+    expect(state.isRotating).toBe(false);
+  });
+
+  it("deve manter continuidade ao atravessar o limite de 180 graus", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.25, 0.5);
+
+    const initialAngle = (179 * Math.PI) / 180;
+    const nextAngle = (-179 * Math.PI) / 180;
+
+    startDragging(
+      engine,
+      center,
+      createPointOnCircle(center, 0.2, initialAngle)
+    );
+
+    const state = engine.update(
+      center,
+      true,
+      true,
+      createPointOnCircle(center, 0.2, nextAngle)
+    );
+
+    const object = state.objects.find(
+      (item) => item.id === "object-1"
+    );
+
+    expect(object?.rotation).toBeCloseTo((2 * Math.PI) / 180);
+  });
+
+  it("deve permitir redimensionamento e rotação simultaneamente", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.25, 0.5);
+
+    startDragging(
+      engine,
+      center,
+      createPointOnCircle(center, 0.2, 0)
+    );
+
+    const state = engine.update(
+      center,
+      true,
+      true,
+      createPointOnCircle(center, 0.25, Math.PI / 2)
+    );
+
+    const object = state.objects.find(
+      (item) => item.id === "object-1"
+    );
+
+    expect(object?.halfSize).toBeCloseTo(0.115);
+    expect(object?.rotation).toBeCloseTo(Math.PI / 2);
+    expect(state.isResizing).toBe(true);
+    expect(state.isRotating).toBe(true);
+  });
+
+  it("não deve provocar salto de rotação ou tamanho quando a mão secundária retorna", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.25, 0.5);
+
+    startDragging(
+      engine,
+      center,
+      createPointOnCircle(center, 0.2, 0)
+    );
+
+    engine.update(center, true, true, null);
+
+    const state = engine.update(
+      center,
+      true,
+      true,
+      createPointOnCircle(center, 0.3, Math.PI / 2)
+    );
+
+    const object = state.objects.find(
+      (item) => item.id === "object-1"
+    );
+
+    expect(object?.halfSize).toBeCloseTo(0.09);
+    expect(object?.rotation).toBeCloseTo(0);
+    expect(state.isResizing).toBe(false);
+    expect(state.isRotating).toBe(false);
+  });
+
+  it("deve selecionar um ponto dentro da área visual de um objeto rotacionado", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.25, 0.5);
+
+    startDragging(
+      engine,
+      center,
+      createPointOnCircle(center, 0.2, 0)
+    );
+
+    engine.update(
+      center,
+      true,
+      true,
+      createPointOnCircle(center, 0.2, Math.PI / 4)
+    );
+
+    const rotatedState = engine.update(center, false, false);
+
+const rotatedObject = rotatedState.objects.find(
+  (item) => item.id === "object-1"
+);
+
+expect(rotatedObject?.rotation).toBeCloseTo(Math.PI / 4);
+
+    // Este ponto está fora do quadrado sem rotação,
+    // mas dentro do quadrado depois de rotacionado.
+    const selectionPoint = createPosition(0.35, 0.5);
+
+    engine.update(selectionPoint, false, true);
+
+    const state = engine.update(selectionPoint, true, true);
+
+    expect(state.selectedObjectId).toBe("object-1");
+    expect(state.isDragging).toBe(true);
+  });
+
+  it("não deve selecionar um ponto fora da área visual de um objeto rotacionado", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.25, 0.5);
+
+    startDragging(
+      engine,
+      center,
+      createPointOnCircle(center, 0.2, 0)
+    );
+
+    engine.update(
+      center,
+      true,
+      true,
+      createPointOnCircle(center, 0.2, Math.PI / 4)
+    );
+
+    engine.update(center, false, false);
+
+    // Está dentro do bounding box alinhado aos eixos,
+    // mas fora dos limites locais do objeto rotacionado.
+    const selectionPoint = createPosition(0.33, 0.58);
+
+    engine.update(selectionPoint, false, true);
+
+    const state = engine.update(selectionPoint, true, true);
+
+    expect(state.selectedObjectId).toBeNull();
+    expect(state.isDragging).toBe(false);
+  });
+
+  it("deve respeitar os limites da área considerando a rotação", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.25, 0.5);
+
+    startDragging(
+      engine,
+      center,
+      createPointOnCircle(center, 0.2, 0)
+    );
+
+    engine.update(
+      center,
+      true,
+      true,
+      createPointOnCircle(center, 0.2, Math.PI / 4)
+    );
+
+    const edgeCursor = createPosition(0, 0);
+
+    const state = engine.update(
+      edgeCursor,
+      true,
+      true,
+      createPointOnCircle(edgeCursor, 0.2, Math.PI / 4)
+    );
+
+    const object = state.objects.find(
+      (item) => item.id === "object-1"
+    );
+
+    const expectedExtent =
+      object!.halfSize *
+      (Math.abs(Math.cos(object!.rotation)) +
+        Math.abs(Math.sin(object!.rotation)));
+
+    expect(object).toBeDefined();
+    expect(object!.position.x).toBeGreaterThanOrEqual(expectedExtent);
+    expect(object!.position.y).toBeGreaterThanOrEqual(expectedExtent);
+    expect(object!.position.x - expectedExtent).toBeGreaterThanOrEqual(0);
+    expect(object!.position.y - expectedExtent).toBeGreaterThanOrEqual(0);
   });
 });
