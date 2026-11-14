@@ -1,3 +1,4 @@
+
 import { describe, expect, it } from "vitest";
 import { GestureClassifier } from "../../src/gestures/GestureClassifier";
 import type { HandLandmark, TrackedHand } from "../../src/tracking/HandTracker";
@@ -17,7 +18,7 @@ function createLandmarks(): HandLandmark[] {
   }));
 }
 
-function createOpenHand(): TrackedHand {
+function createHandWithFingerRatios(ratios: number[]): TrackedHand {
   const landmarks = createLandmarks();
 
   landmarks[9] = { x: 0, y: 1, z: 0 };
@@ -29,43 +30,37 @@ function createOpenHand(): TrackedHand {
     { pip: 18, tip: 20 },
   ];
 
-  for (const finger of fingers) {
+  fingers.forEach((finger, index) => {
     landmarks[finger.pip] = { x: 0, y: 1, z: 0 };
-    landmarks[finger.tip] = { x: 0, y: 2, z: 0 };
-  }
+    landmarks[finger.tip] = {
+      x: 0,
+      y: ratios[index],
+      z: 0,
+    };
+  });
 
-  landmarks[4] = { x: -0.5, y: 0.5, z: 0 };
-  landmarks[8] = { x: 0, y: 2, z: 0 };
+  // Mantém o polegar distante do indicador para não ativar PINCH.
+  landmarks[4] = { x: 2, y: 2, z: 0 };
 
   return createHand(landmarks);
 }
 
+function createOpenHand(): TrackedHand {
+  return createHandWithFingerRatios([2, 2, 2, 2]);
+}
+
 function createFist(): TrackedHand {
-  const landmarks = createLandmarks();
-
-  landmarks[9] = { x: 0, y: 1, z: 0 };
-
-  const fingers = [
-    { pip: 6, tip: 8 },
-    { pip: 10, tip: 12 },
-    { pip: 14, tip: 16 },
-    { pip: 18, tip: 20 },
-  ];
-
-  for (const finger of fingers) {
-    landmarks[finger.pip] = { x: 0, y: 1, z: 0 };
-    landmarks[finger.tip] = { x: 0, y: 0.5, z: 0 };
-  }
-
-  landmarks[4] = { x: 0.5, y: 0.5, z: 0 };
-
-  return createHand(landmarks);
+  return createHandWithFingerRatios([0.5, 0.5, 0.5, 0.5]);
 }
 
 function createPinch(): TrackedHand {
   const hand = createOpenHand();
 
-  hand.landmarks[4] = { x: 0.01, y: 2, z: 0 };
+  hand.landmarks[4] = {
+    x: 0.01,
+    y: 2,
+    z: 0,
+  };
 
   return hand;
 }
@@ -73,7 +68,6 @@ function createPinch(): TrackedHand {
 function createHandAtPinchDistance(normalizedDistance: number): TrackedHand {
   const hand = createOpenHand();
 
-  // A escala da mão é 1, então esta distância corresponde ao valor normalizado.
   hand.landmarks[4] = {
     x: normalizedDistance,
     y: 2,
@@ -84,27 +78,7 @@ function createHandAtPinchDistance(normalizedDistance: number): TrackedHand {
 }
 
 function createUnknown(): TrackedHand {
-  const landmarks = createLandmarks();
-
-  landmarks[9] = { x: 0, y: 1, z: 0 };
-
-  // Indicador parcialmente estendido.
-  landmarks[6] = { x: 0, y: 1, z: 0 };
-  landmarks[8] = { x: 0, y: 1.2, z: 0 };
-
-  // Demais dedos dobrados.
-  landmarks[10] = { x: 0, y: 1, z: 0 };
-  landmarks[12] = { x: 0, y: 1.05, z: 0 };
-
-  landmarks[14] = { x: 0, y: 1, z: 0 };
-  landmarks[16] = { x: 0, y: 1.05, z: 0 };
-
-  landmarks[18] = { x: 0, y: 1, z: 0 };
-  landmarks[20] = { x: 0, y: 1.05, z: 0 };
-
-  landmarks[4] = { x: 0.5, y: 0.5, z: 0 };
-
-  return createHand(landmarks);
+  return createHandWithFingerRatios([1.2, 1.05, 1.05, 1.05]);
 }
 
 describe("GestureClassifier", () => {
@@ -159,11 +133,43 @@ describe("GestureClassifier", () => {
     expect(result.gesture).toBe("OPEN_HAND");
   });
 
-  it("deve retornar UNKNOWN para uma posição intermediária", () => {
+  it("deve retornar UNKNOWN para dedos em posições intermediárias", () => {
     const result = classifier.classify(createUnknown());
 
     expect(result.gesture).toBe("UNKNOWN");
     expect(result.confidence).toBe(0.5);
+  });
+
+  it("não deve reconhecer punho quando existe um dedo estendido", () => {
+    const result = classifier.classify(
+      createHandWithFingerRatios([2, 0.5, 0.5, 0.5])
+    );
+
+    expect(result.gesture).toBe("UNKNOWN");
+  });
+
+  it("não deve reconhecer mão aberta quando existe um dedo curvado", () => {
+    const result = classifier.classify(
+      createHandWithFingerRatios([2, 2, 2, 0.5])
+    );
+
+    expect(result.gesture).toBe("UNKNOWN");
+  });
+
+  it("deve retornar UNKNOWN quando existe um dedo indeterminado", () => {
+    const result = classifier.classify(
+      createHandWithFingerRatios([2, 2, 1.07, 2])
+    );
+
+    expect(result.gesture).toBe("UNKNOWN");
+  });
+
+  it("deve retornar UNKNOWN para combinações mistas de dedos", () => {
+    const result = classifier.classify(
+      createHandWithFingerRatios([2, 0.5, 2, 0.5])
+    );
+
+    expect(result.gesture).toBe("UNKNOWN");
   });
 
   it("deve retornar UNKNOWN quando a quantidade de landmarks for inválida", () => {
@@ -178,9 +184,7 @@ describe("GestureClassifier", () => {
   });
 
   it("deve retornar UNKNOWN quando a escala da mão for praticamente nula", () => {
-    const landmarks = createLandmarks();
-
-    const result = classifier.classify(createHand(landmarks));
+    const result = classifier.classify(createHand(createLandmarks()));
 
     expect(result).toEqual({
       gesture: "UNKNOWN",

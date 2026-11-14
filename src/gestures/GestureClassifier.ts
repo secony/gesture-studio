@@ -1,3 +1,4 @@
+
 import type { HandLandmark, TrackedHand } from "../tracking/HandTracker";
 import type {
   GestureResult,
@@ -12,22 +13,32 @@ const DEFAULT_THRESHOLDS: GestureThresholds = {
   fingerCurled: 1.05,
 };
 
+type FingerState = "EXTENDED" | "CURLED" | "INDETERMINATE";
+
 function distance(a: HandLandmark, b: HandLandmark): number {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
-function isFingerExtended(
+function classifyFinger(
   landmarks: HandLandmark[],
   pip: number,
   tip: number,
-  threshold: number
-): boolean {
+  thresholds: GestureThresholds
+): FingerState {
   const wrist = landmarks[0];
 
   const tipDistance = distance(wrist, landmarks[tip]);
   const pipDistance = distance(wrist, landmarks[pip]);
 
-  return tipDistance > pipDistance * threshold;
+  if (tipDistance > pipDistance * thresholds.fingerExtended) {
+    return "EXTENDED";
+  }
+
+  if (tipDistance < pipDistance * thresholds.fingerCurled) {
+    return "CURLED";
+  }
+
+  return "INDETERMINATE";
 }
 
 export class GestureClassifier {
@@ -54,23 +65,34 @@ export class GestureClassifier {
     }
 
     const fingerStates = [
-      isFingerExtended(landmarks, 6, 8, this.thresholds.fingerExtended),
-      isFingerExtended(landmarks, 10, 12, this.thresholds.fingerExtended),
-      isFingerExtended(landmarks, 14, 16, this.thresholds.fingerExtended),
-      isFingerExtended(landmarks, 18, 20, this.thresholds.fingerExtended),
+      classifyFinger(landmarks, 6, 8, this.thresholds),
+      classifyFinger(landmarks, 10, 12, this.thresholds),
+      classifyFinger(landmarks, 14, 16, this.thresholds),
+      classifyFinger(landmarks, 18, 20, this.thresholds),
     ];
 
-    const extendedCount = fingerStates.filter(Boolean).length;
+    const extendedCount = fingerStates.filter(
+      (state) => state === "EXTENDED"
+    ).length;
+
+    const curledCount = fingerStates.filter(
+      (state) => state === "CURLED"
+    ).length;
+
     const pinchDistance = distance(landmarks[4], landmarks[8]) / handScale;
 
-    // Usa uma margem maior para manter uma pinça já reconhecida.
-    // Isso evita alternância rápida quando a distância oscila perto do limite.
-    const pinchThreshold =
-      previousGesture === "PINCH"
+    // Mantém a margem maior para uma pinça já reconhecida.
+    if (
+      pinchDistance <
+      (previousGesture === "PINCH"
         ? this.thresholds.pinchRelease
-        : this.thresholds.pinch;
+        : this.thresholds.pinch)
+    ) {
+      const pinchThreshold =
+        previousGesture === "PINCH"
+          ? this.thresholds.pinchRelease
+          : this.thresholds.pinch;
 
-    if (pinchDistance < pinchThreshold) {
       return {
         gesture: "PINCH",
         confidence: Math.min(
@@ -80,19 +102,27 @@ export class GestureClassifier {
       };
     }
 
-    // Só considera punho fechado quando nenhum dedo está estendido
-    // e o polegar não está próximo do indicador.
-    if (extendedCount === 0) {
+    // Uma mão aberta exige os quatro dedos estendidos.
+    if (extendedCount === 4) {
+      return {
+        gesture: "OPEN_HAND",
+        confidence: 1,
+      };
+    }
+
+    // Um punho exige os quatro dedos efetivamente curvados.
+    if (curledCount === 4) {
       return {
         gesture: "FIST",
         confidence: 0.9,
       };
     }
 
-    if (extendedCount === 4) {
-      return { gesture: "OPEN_HAND", confidence: 1 };
-    }
-
-    return { gesture: "UNKNOWN", confidence: 0.5 };
+    // Combinações mistas ou posições ambíguas não são forçadas
+    // para uma classificação específica.
+    return {
+      gesture: "UNKNOWN",
+      confidence: 0.5,
+    };
   }
 }
