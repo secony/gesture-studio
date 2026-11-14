@@ -189,7 +189,7 @@ describe("PlaygroundEngine", () => {
     expect(state.isDragging).toBe(false);
     expect(state.isResizing).toBe(false);
     expect(state.isRotating).toBe(false);
-    expect(state.selectedObjectId).toBeNull();
+    expect(state.selectedObjectId).toBe("object-1");
   });
 
   it("deve cancelar a soltura se a pinça retornar dentro do prazo", () => {
@@ -227,7 +227,7 @@ describe("PlaygroundEngine", () => {
     expect(state.isDragging).toBe(false);
     expect(state.isResizing).toBe(false);
     expect(state.isRotating).toBe(false);
-    expect(state.selectedObjectId).toBeNull();
+    expect(state.selectedObjectId).toBe("object-1");
   });
 
   it("deve encerrar a interação quando o cursor desaparece", () => {
@@ -238,7 +238,7 @@ describe("PlaygroundEngine", () => {
     const state = engine.update(null, true, true);
 
     expect(state.isDragging).toBe(false);
-    expect(state.selectedObjectId).toBeNull();
+    expect(state.selectedObjectId).toBe("object-1");
   });
 
   it("deve estabelecer uma distância inicial antes de redimensionar", () => {

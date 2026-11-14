@@ -23,6 +23,15 @@ const MAX_HALF_SIZE = 0.18;
 const RESIZE_SENSITIVITY = 0.5;
 const ROTATION_EPSILON = 0.00001;
 
+const OBJECT_SPAWN_POSITIONS: CursorPosition[] = [
+  { x: 0.5, y: 0.25 },
+  { x: 0.25, y: 0.25 },
+  { x: 0.75, y: 0.25 },
+  { x: 0.25, y: 0.75 },
+  { x: 0.5, y: 0.75 },
+  { x: 0.75, y: 0.75 },
+];
+
 export class PlaygroundEngine {
   private objects: PlaygroundObject[] = [
     {
@@ -45,6 +54,8 @@ export class PlaygroundEngine {
     },
   ];
 
+  private nextObjectId = 4;
+
   private selectedObjectId: string | null = null;
   private isDragging = false;
   private isResizing = false;
@@ -60,6 +71,48 @@ export class PlaygroundEngine {
 
   private previousHandDistance: number | null = null;
   private previousHandAngle: number | null = null;
+
+  addObject(position?: CursorPosition): PlaygroundState {
+    if (this.isDragging) {
+      return this.getState();
+    }
+
+    const spawnIndex =
+      (this.nextObjectId - 4) % OBJECT_SPAWN_POSITIONS.length;
+
+    const spawnPosition =
+      position ?? OBJECT_SPAWN_POSITIONS[spawnIndex];
+
+    const object: PlaygroundObject = {
+      id: `object-${this.nextObjectId}`,
+      position: { ...spawnPosition },
+      halfSize: 0.09,
+      rotation: 0,
+    };
+
+    this.nextObjectId++;
+
+    this.clampObjectPosition(object, 1);
+
+    this.objects.push(object);
+    this.selectedObjectId = object.id;
+
+    return this.getState();
+  }
+
+  removeSelectedObject(): PlaygroundState {
+    if (this.isDragging || !this.selectedObjectId) {
+      return this.getState();
+    }
+
+    this.objects = this.objects.filter(
+      (object) => object.id !== this.selectedObjectId
+    );
+
+    this.selectedObjectId = null;
+
+    return this.getState();
+  }
 
   update(
     cursor: CursorPosition | null,
@@ -100,6 +153,8 @@ export class PlaygroundEngine {
         );
 
         this.objects.push(target);
+      } else {
+        this.selectedObjectId = null;
       }
     }
 
@@ -118,7 +173,6 @@ export class PlaygroundEngine {
         this.isDragging = false;
         this.isResizing = false;
         this.isRotating = false;
-        this.selectedObjectId = null;
         this.pinchLostAt = null;
         this.previousHandDistance = null;
         this.previousHandAngle = null;
@@ -262,16 +316,14 @@ export class PlaygroundEngine {
   }
 
   private resetInteraction(): void {
-    this.isDragging = false;
-    this.isResizing = false;
-    this.isRotating = false;
-    this.selectedObjectId = null;
-    this.previousPinching = false;
-    this.pinchLostAt = null;
-    this.previousHandDistance = null;
-    this.previousHandAngle = null;
-  }
-
+  this.isDragging = false;
+  this.isResizing = false;
+  this.isRotating = false;
+  this.previousPinching = false;
+  this.pinchLostAt = null;
+  this.previousHandDistance = null;
+  this.previousHandAngle = null;
+}
   private getSelectedObject(): PlaygroundObject | undefined {
     return this.objects.find(
       (object) => object.id === this.selectedObjectId
