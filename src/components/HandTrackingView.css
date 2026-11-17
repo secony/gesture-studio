@@ -298,11 +298,17 @@
   font-weight: 700;
 }
 
+
 .studio-object-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
+
+.studio-button-remove {
+  grid-column: 1 / -1;
+}
+
 
 .studio-button {
   display: inline-flex;

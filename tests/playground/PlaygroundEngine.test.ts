@@ -605,14 +605,12 @@ describe("PlaygroundEngine", () => {
 
     const rotatedState = engine.update(center, false, false);
 
-const rotatedObject = rotatedState.objects.find(
-  (item) => item.id === "object-1"
-);
+    const rotatedObject = rotatedState.objects.find(
+      (item) => item.id === "object-1"
+    );
 
-expect(rotatedObject?.rotation).toBeCloseTo(Math.PI / 4);
+    expect(rotatedObject?.rotation).toBeCloseTo(Math.PI / 4);
 
-    // Este ponto está fora do quadrado sem rotação,
-    // mas dentro do quadrado depois de rotacionado.
     const selectionPoint = createPosition(0.35, 0.5);
 
     engine.update(selectionPoint, false, true);
@@ -642,8 +640,6 @@ expect(rotatedObject?.rotation).toBeCloseTo(Math.PI / 4);
 
     engine.update(center, false, false);
 
-    // Está dentro do bounding box alinhado aos eixos,
-    // mas fora dos limites locais do objeto rotacionado.
     const selectionPoint = createPosition(0.33, 0.58);
 
     engine.update(selectionPoint, false, true);
@@ -694,5 +690,164 @@ expect(rotatedObject?.rotation).toBeCloseTo(Math.PI / 4);
     expect(object!.position.y).toBeGreaterThanOrEqual(expectedExtent);
     expect(object!.position.x - expectedExtent).toBeGreaterThanOrEqual(0);
     expect(object!.position.y - expectedExtent).toBeGreaterThanOrEqual(0);
+  });
+
+  // Testes de geometria: círculo e triângulo
+
+  it("deve selecionar um ponto dentro de um círculo", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.5, 0.2);
+
+    engine.addObject(center, "circle");
+
+    engine.update(center, false, true);
+    const state = engine.update(center, true, true);
+
+    expect(state.selectedObjectId).toBe("object-4");
+    expect(state.isDragging).toBe(true);
+  });
+
+  it("não deve selecionar um ponto fora do círculo, mesmo dentro do bounding box", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.5, 0.2);
+
+    engine.addObject(center, "circle");
+
+    const outsidePoint = createPosition(
+      center.x + 0.08,
+      center.y + 0.08
+    );
+
+    engine.update(outsidePoint, false, true);
+    const state = engine.update(outsidePoint, true, true);
+
+    expect(state.selectedObjectId).toBeNull();
+    expect(state.isDragging).toBe(false);
+  });
+
+  it("deve considerar a proporção da tela no hit-test do círculo", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.5, 0.2);
+
+    engine.update(center, false, true, null, 2);
+    engine.addObject(center, "circle");
+
+    const outsidePoint = createPosition(
+      center.x + 0.06,
+      center.y
+    );
+
+    engine.update(outsidePoint, false, true, null, 2);
+    const state = engine.update(outsidePoint, true, true, null, 2);
+
+    expect(state.selectedObjectId).toBeNull();
+    expect(state.isDragging).toBe(false);
+  });
+
+  it("deve selecionar um ponto dentro de um triângulo", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.5, 0.2);
+
+    engine.addObject(center, "triangle");
+
+    engine.update(center, false, true);
+    const state = engine.update(center, true, true);
+
+    expect(state.selectedObjectId).toBe("object-4");
+    expect(state.isDragging).toBe(true);
+  });
+
+  it("não deve selecionar um ponto fora do triângulo", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.5, 0.2);
+
+    engine.addObject(center, "triangle");
+
+    const outsidePoint = createPosition(
+      center.x + 0.09,
+      center.y + 0.04
+    );
+
+    engine.update(outsidePoint, false, true);
+    const state = engine.update(outsidePoint, true, true);
+
+    expect(state.selectedObjectId).toBeNull();
+    expect(state.isDragging).toBe(false);
+  });
+
+  it("deve selecionar o triângulo considerando sua rotação", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.5, 0.5);
+
+    engine.addObject(center, "triangle");
+
+    const firstHand = createPosition(0.7, 0.5);
+    const secondHand = createPosition(0.5, 0.7);
+
+    engine.update(center, false, true, firstHand);
+    engine.update(center, true, true, firstHand);
+    engine.update(center, true, true, secondHand);
+
+    const stateAfterRotation = engine.update(
+      center,
+      false,
+      false
+    );
+
+    const object = stateAfterRotation.objects.find(
+      (item) => item.id === "object-4"
+    );
+
+    expect(object?.rotation).toBeCloseTo(Math.PI / 2);
+
+    engine.update(center, false, true);
+    const selectionState = engine.update(center, true, true);
+
+    expect(selectionState.selectedObjectId).toBe("object-4");
+  });
+
+  it("deve selecionar o objeto que está visualmente por cima quando há sobreposição", () => {
+    const engine = new PlaygroundEngine();
+    const center = createPosition(0.5, 0.5);
+
+    engine.addObject(center, "rectangle");
+    engine.addObject(center, "circle");
+
+    engine.update(center, false, true);
+    const state = engine.update(center, true, true);
+
+    expect(state.selectedObjectId).toBe("object-5");
+  });
+
+  it("deve respeitar os limites da área ao adicionar um círculo próximo à borda", () => {
+    const engine = new PlaygroundEngine();
+
+    engine.update(createPosition(0.05, 0.05), false, true);
+    engine.addObject(createPosition(0.05, 0.05), "circle");
+
+    const state = engine.update(null, false, false);
+    const object = state.objects.find(
+      (item) => item.id === "object-4"
+    );
+
+    expect(object).toBeDefined();
+    expect(object!.position.x).toBeGreaterThanOrEqual(0.09);
+    expect(object!.position.y).toBeGreaterThanOrEqual(0.09);
+  });
+
+  it("deve respeitar os limites da área ao adicionar um triângulo próximo à borda", () => {
+    const engine = new PlaygroundEngine();
+
+    engine.update(createPosition(0.05, 0.05), false, true);
+    engine.addObject(createPosition(0.05, 0.05), "triangle");
+
+    const state = engine.update(null, false, false);
+    const object = state.objects.find(
+      (item) => item.id === "object-4"
+    );
+
+    expect(object).toBeDefined();
+    expect(object!.position.x).toBeGreaterThan(0);
+    expect(object!.position.y).toBeGreaterThan(0);
   });
 });

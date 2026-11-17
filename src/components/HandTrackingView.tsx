@@ -398,55 +398,84 @@ export function HandTrackingView() {
               }
             }
 
-            // Desenho dos objetos do Playground.
-            for (const object of nextPlaygroundState.objects) {
-              const objectX = object.position.x * canvas.width;
-              const objectY = object.position.y * canvas.height;
+            
+// Desenho dos objetos do Playground.
+for (const object of nextPlaygroundState.objects) {
+  const objectX = object.position.x * canvas.width;
+  const objectY = object.position.y * canvas.height;
 
-              const objectWidth =
-                object.halfSize * 2 * canvas.width;
+  // O tamanho é calculado em relação à altura do Canvas.
+  // Isso mantém as proporções geométricas consistentes.
+  const halfWidth = object.halfSize * canvas.width;
+  const halfHeight = object.halfSize * canvas.height;
 
-              const objectHeight =
-                object.halfSize * 2 * canvas.height;
+  const isSelected =
+    nextPlaygroundState.selectedObjectId === object.id;
 
-              const isSelected =
-                nextPlaygroundState.selectedObjectId === object.id;
+  context.save();
 
-              context.save();
+  context.translate(objectX, objectY);
+  context.rotate(object.rotation);
 
-              context.translate(objectX, objectY);
-              context.rotate(object.rotation);
+  context.shadowBlur = isSelected ? 35 : 15;
+  context.shadowColor = isSelected ? "#4ADE80" : "#22D3EE";
 
-              context.shadowBlur = isSelected ? 35 : 15;
+  context.fillStyle = isSelected
+    ? "rgba(74, 222, 128, 0.25)"
+    : "rgba(34, 211, 238, 0.20)";
 
-              context.shadowColor = isSelected
-                ? "#4ADE80"
-                : "#22D3EE";
+  context.strokeStyle = isSelected
+    ? "#4ADE80"
+    : "#22D3EE";
 
-              context.fillStyle = isSelected
-                ? "rgba(74, 222, 128, 0.25)"
-                : "rgba(34, 211, 238, 0.20)";
+  context.lineWidth = isSelected ? 4 : 3;
 
-              context.strokeStyle = isSelected
-                ? "#4ADE80"
-                : "#22D3EE";
+  context.beginPath();
 
-              context.lineWidth = isSelected ? 4 : 3;
+  switch (object.type) {
+    case "rectangle":
+      context.rect(
+        -halfWidth,
+        -halfHeight,
+        halfWidth * 2,
+        halfHeight * 2
+      );
+      break;
 
-              context.beginPath();
+    case "circle":
+      context.arc(
+        0,
+        0,
+        halfHeight,
+        0,
+        Math.PI * 2
+      );
+      break;
 
-              context.rect(
-                -objectWidth / 2,
-                -objectHeight / 2,
-                objectWidth,
-                objectHeight
-              );
+    case "triangle": {
+      const triangleHalfWidth =
+        (Math.sqrt(3) / 2) * halfWidth;
 
-              context.fill();
-              context.stroke();
+      context.moveTo(0, -halfHeight);
+      context.lineTo(
+        triangleHalfWidth,
+        halfHeight / 2
+      );
+      context.lineTo(
+        -triangleHalfWidth,
+        halfHeight / 2
+      );
+      context.closePath();
+      break;
+    }
+  }
 
-              context.restore();
-            }
+  context.fill();
+  context.stroke();
+
+  context.restore();
+}
+
 
             // Desenho do cursor virtual.
             if (isActive && lastCursorPosition) {
@@ -746,28 +775,54 @@ export function HandTrackingView() {
 
                 <div style={{ height: 12 }} />
 
-                <div className="studio-object-actions">
-                  <button
-                    type="button"
-                    className="studio-button studio-button-primary"
-                    onClick={() => handleAddObject("rectangle")}
-                    disabled={
-                      status !== "running" ||
-                      playgroundState.isDragging
-                    }
-                  >
-                    + Adicionar
-                  </button>
+                
+<div className="studio-object-actions">
+  <button
+    type="button"
+    className="studio-button studio-button-primary"
+    onClick={() => handleAddObject("rectangle")}
+    disabled={
+      status !== "running" ||
+      playgroundState.isDragging
+    }
+  >
+    + Retângulo
+  </button>
 
-                  <button
-                    type="button"
-                    className="studio-button studio-button-danger"
-                    onClick={handleRemoveObject}
-                    disabled={!canRemoveObject}
-                  >
-                    Remover
-                  </button>
-                </div>
+  <button
+    type="button"
+    className="studio-button studio-button-primary"
+    onClick={() => handleAddObject("circle")}
+    disabled={
+      status !== "running" ||
+      playgroundState.isDragging
+    }
+  >
+    + Círculo
+  </button>
+
+  <button
+    type="button"
+    className="studio-button studio-button-primary"
+    onClick={() => handleAddObject("triangle")}
+    disabled={
+      status !== "running" ||
+      playgroundState.isDragging
+    }
+  >
+    + Triângulo
+  </button>
+
+  <button
+    type="button"
+    className="studio-button studio-button-danger studio-button-remove"
+    onClick={handleRemoveObject}
+    disabled={!canRemoveObject}
+  >
+    Remover selecionado
+  </button>
+</div>
+
               </div>
 
               <div className="studio-divider" />
