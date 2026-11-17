@@ -11,7 +11,10 @@ import type { ActionExecutionResult } from "../actions/ActionEngine";
 import type { CursorPosition } from "../cursor/CursorController";
 import { OneEuroCursorController } from "../cursor/OneEuroCursorController";
 import { PlaygroundEngine } from "../playground/PlaygroundEngine";
-import type { PlaygroundState } from "../playground/PlaygroundEngine";
+import type {
+  PlaygroundState,
+  PlaygroundObjectType,
+} from "../playground/PlaygroundEngine";
 import { TrackingMetrics } from "../metrics/TrackingMetrics";
 import "./HandTrackingView.css";
 
@@ -34,18 +37,21 @@ const INITIAL_PLAYGROUND_STATE: PlaygroundState = {
   objects: [
     {
       id: "object-1",
+      type: "rectangle",
       position: { x: 0.25, y: 0.5 },
       halfSize: 0.09,
       rotation: 0,
     },
     {
       id: "object-2",
+      type: "rectangle",
       position: { x: 0.5, y: 0.5 },
       halfSize: 0.09,
       rotation: 0,
     },
     {
       id: "object-3",
+      type: "rectangle",
       position: { x: 0.75, y: 0.5 },
       halfSize: 0.09,
       rotation: 0,
@@ -553,12 +559,14 @@ export function HandTrackingView() {
   }, []);
 
   // Adiciona um objeto ao Playground.
-  function handleAddObject() {
+  function handleAddObject(
+    type: PlaygroundObjectType = "rectangle"
+  ) {
     const engine = playgroundEngineRef.current;
 
     if (!engine) return;
 
-    const nextState = engine.addObject();
+    const nextState = engine.addObject(undefined, type);
     syncPlaygroundState(nextState);
   }
 
@@ -742,7 +750,7 @@ export function HandTrackingView() {
                   <button
                     type="button"
                     className="studio-button studio-button-primary"
-                    onClick={handleAddObject}
+                    onClick={() => handleAddObject("rectangle")}
                     disabled={
                       status !== "running" ||
                       playgroundState.isDragging

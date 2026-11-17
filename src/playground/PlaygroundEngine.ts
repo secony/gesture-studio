@@ -1,8 +1,14 @@
 
 import type { CursorPosition } from "../cursor/CursorController";
 
+export type PlaygroundObjectType =
+  | "rectangle"
+  | "circle"
+  | "triangle";
+
 export interface PlaygroundObject {
   id: string;
+  type: PlaygroundObjectType;
   position: CursorPosition;
   halfSize: number;
   rotation: number;
@@ -36,18 +42,21 @@ export class PlaygroundEngine {
   private objects: PlaygroundObject[] = [
     {
       id: "object-1",
+      type: "rectangle",
       position: { x: 0.25, y: 0.5 },
       halfSize: 0.09,
       rotation: 0,
     },
     {
       id: "object-2",
+      type: "rectangle",
       position: { x: 0.5, y: 0.5 },
       halfSize: 0.09,
       rotation: 0,
     },
     {
       id: "object-3",
+      type: "rectangle",
       position: { x: 0.75, y: 0.5 },
       halfSize: 0.09,
       rotation: 0,
@@ -64,6 +73,8 @@ export class PlaygroundEngine {
   private previousPinching = false;
   private pinchLostAt: number | null = null;
 
+  private aspectRatio = 1;
+
   private grabOffset: CursorPosition = {
     x: 0,
     y: 0,
@@ -72,7 +83,10 @@ export class PlaygroundEngine {
   private previousHandDistance: number | null = null;
   private previousHandAngle: number | null = null;
 
-  addObject(position?: CursorPosition): PlaygroundState {
+  addObject(
+    position?: CursorPosition,
+    type: PlaygroundObjectType = "rectangle"
+  ): PlaygroundState {
     if (this.isDragging) {
       return this.getState();
     }
@@ -85,6 +99,7 @@ export class PlaygroundEngine {
 
     const object: PlaygroundObject = {
       id: `object-${this.nextObjectId}`,
+      type,
       position: { ...spawnPosition },
       halfSize: 0.09,
       rotation: 0,
@@ -92,7 +107,7 @@ export class PlaygroundEngine {
 
     this.nextObjectId++;
 
-    this.clampObjectPosition(object, 1);
+    this.clampObjectPosition(object, this.aspectRatio);
 
     this.objects.push(object);
     this.selectedObjectId = object.id;
@@ -131,13 +146,18 @@ export class PlaygroundEngine {
         ? aspectRatio
         : 1;
 
+    this.aspectRatio = safeAspectRatio;
+
     const now = performance.now();
 
     const pinchStarted =
       isPinching && !this.previousPinching;
 
     if (pinchStarted && !this.isDragging) {
-      const target = this.findObjectAt(cursor, safeAspectRatio);
+      const target = this.findObjectAt(
+        cursor,
+        safeAspectRatio
+      );
 
       if (target) {
         this.selectedObjectId = target.id;
@@ -188,7 +208,10 @@ export class PlaygroundEngine {
           y: cursor.y + this.grabOffset.y,
         };
 
-        this.clampObjectPosition(selectedObject, safeAspectRatio);
+        this.clampObjectPosition(
+          selectedObject,
+          safeAspectRatio
+        );
 
         if (secondaryHand) {
           this.resizeObject(
@@ -205,7 +228,10 @@ export class PlaygroundEngine {
             safeAspectRatio
           );
 
-          this.clampObjectPosition(selectedObject, safeAspectRatio);
+          this.clampObjectPosition(
+            selectedObject,
+            safeAspectRatio
+          );
         } else {
           this.isResizing = false;
           this.isRotating = false;
@@ -246,6 +272,7 @@ export class PlaygroundEngine {
     );
 
     this.previousHandDistance = currentDistance;
+
     this.isResizing =
       Math.abs(distanceDifference) > ROTATION_EPSILON;
   }
@@ -278,6 +305,7 @@ export class PlaygroundEngine {
     );
 
     this.previousHandAngle = currentAngle;
+
     this.isRotating =
       Math.abs(angleDifference) > ROTATION_EPSILON;
   }
@@ -286,44 +314,161 @@ export class PlaygroundEngine {
     return Math.atan2(Math.sin(angle), Math.cos(angle));
   }
 
+  private getLocalVertices(
+    object: PlaygroundObject,
+    aspectRatio: number
+  ): CursorPosition[] {
+    const size = object.halfSize;
+
+    if (object.type === "triangle") {
+      const halfWidth = (Math.sqrt(3) / 2) * size;
+
+      return [
+        { x: 0, y: -size },
+        { x: halfWidth * aspectRatio, y: size / 2 },
+        { x: -halfWidth * aspectRatio, y: size / 2 },
+      ];
+    }
+
+    return [
+      { x: -size * aspectRatio, y: -size },
+      { x: size * aspectRatio, y: -size },
+      { x: size * aspectRatio, y: size },
+      { x: -size * aspectRatio, y: size },
+    ];
+  }
+
+  private getObjectExtents(
+    object: PlaygroundObject,
+    aspectRatio: number
+  ): CursorPosition {
+    if (object.type === "circle") {
+      return {
+        x: object.halfSize / aspectRatio,
+        y: object.halfSize,
+      };
+    }
+
+    const vertices = this.getLocalVertices(
+      object,
+      aspectRatio
+    );
+
+    const cos = Math.cos(object.rotation);
+    const sin = Math.sin(object.rotation);
+
+    let maxX = 0;
+    let maxY = 0;
+
+    for (const vertex of vertices) {
+      const rotatedX =
+        vertex.x * cos - vertex.y * sin;
+
+      const rotatedY =
+        vertex.x * sin + vertex.y * cos;
+
+      maxX = Math.max(maxX, Math.abs(rotatedX));
+      maxY = Math.max(maxY, Math.abs(rotatedY));
+    }
+
+    return {
+      x: maxX / aspectRatio,
+      y: maxY,
+    };
+  }
+
   private clampObjectPosition(
     object: PlaygroundObject,
     aspectRatio: number
   ): void {
-    const absCos = Math.abs(Math.cos(object.rotation));
-    const absSin = Math.abs(Math.sin(object.rotation));
+    const safeAspectRatio =
+      Number.isFinite(aspectRatio) && aspectRatio > 0
+        ? aspectRatio
+        : 1;
 
-    const horizontalExtent =
-      object.halfSize *
-      (absCos + absSin / aspectRatio);
-
-    const verticalExtent =
-      object.halfSize *
-      (absSin * aspectRatio + absCos);
+    const extents = this.getObjectExtents(
+      object,
+      safeAspectRatio
+    );
 
     object.position = {
       x: this.clamp(
         object.position.x,
-        horizontalExtent,
-        1 - horizontalExtent
+        extents.x,
+        1 - extents.x
       ),
       y: this.clamp(
         object.position.y,
-        verticalExtent,
-        1 - verticalExtent
+        extents.y,
+        1 - extents.y
       ),
     };
   }
 
+  private isPointInsidePolygon(
+    point: CursorPosition,
+    vertices: CursorPosition[]
+  ): boolean {
+    let inside = false;
+
+    for (
+      let i = 0, j = vertices.length - 1;
+      i < vertices.length;
+      j = i++
+    ) {
+      const current = vertices[i];
+      const previous = vertices[j];
+
+      const intersects =
+        current.y > point.y !== previous.y > point.y &&
+        point.x <
+          ((previous.x - current.x) *
+            (point.y - current.y)) /
+            (previous.y - current.y) +
+            current.x;
+
+      if (intersects) {
+        inside = !inside;
+      }
+    }
+
+    return inside;
+  }
+
+  private isPointInsideObject(
+    object: PlaygroundObject,
+    localX: number,
+    localY: number,
+    aspectRatio: number
+  ): boolean {
+    if (object.type === "circle") {
+      return (
+        localX * localX + localY * localY <=
+        object.halfSize * object.halfSize
+      );
+    }
+
+    const vertices = this.getLocalVertices(
+      object,
+      aspectRatio
+    );
+
+    return this.isPointInsidePolygon(
+      { x: localX, y: localY },
+      vertices
+    );
+  }
+
   private resetInteraction(): void {
-  this.isDragging = false;
-  this.isResizing = false;
-  this.isRotating = false;
-  this.previousPinching = false;
-  this.pinchLostAt = null;
-  this.previousHandDistance = null;
-  this.previousHandAngle = null;
-}
+    this.isDragging = false;
+    this.isResizing = false;
+    this.isRotating = false;
+    this.previousPinching = false;
+    this.pinchLostAt = null;
+    this.previousHandDistance = null;
+    this.previousHandAngle = null;
+  }
+
   private getSelectedObject(): PlaygroundObject | undefined {
     return this.objects.find(
       (object) => object.id === this.selectedObjectId
@@ -334,7 +479,11 @@ export class PlaygroundEngine {
     cursor: CursorPosition,
     aspectRatio: number
   ): PlaygroundObject | null {
-    for (let index = this.objects.length - 1; index >= 0; index--) {
+    for (
+      let index = this.objects.length - 1;
+      index >= 0;
+      index--
+    ) {
       const object = this.objects[index];
 
       const deltaX =
@@ -349,13 +498,14 @@ export class PlaygroundEngine {
       const localX = deltaX * cos + deltaY * sin;
       const localY = -deltaX * sin + deltaY * cos;
 
-      const insideX =
-        Math.abs(localX) <= object.halfSize * aspectRatio;
-
-      const insideY =
-        Math.abs(localY) <= object.halfSize;
-
-      if (insideX && insideY) {
+      if (
+        this.isPointInsideObject(
+          object,
+          localX,
+          localY,
+          aspectRatio
+        )
+      ) {
         return object;
       }
     }
