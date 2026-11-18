@@ -1,4 +1,3 @@
-
 export interface CursorMetricPosition {
   x: number;
   y: number;
@@ -17,12 +16,26 @@ export interface TrackingMetricsSnapshot {
   lastTrackingLossDurationMs: number;
   isTrackingLost: boolean;
   currentTrackingLossDurationMs: number;
+  /** Frames em que pelo menos uma mão foi detectada. */
+  handFrames: number;
+  /** Frames em que duas ou mais mãos receberam o mesmo rótulo. */
+  duplicateLabelFrames: number;
+  /** Trocas de rótulo de uma mesma mão (mesma posição, rótulo diferente). */
+  labelSwitchCount: number;
+}
+
+export interface HandLabelObservation {
+  handedness: string;
+  wrist: CursorMetricPosition | null;
 }
 
 interface TrackingMetricsOptions {
   maxSamples?: number;
   stationaryThreshold?: number;
 }
+
+/** Distância máxima (coordenadas normalizadas) para tratar duas leituras como a mesma mão. */
+const SAME_HAND_MAX_DISTANCE = 0.15;
 
 interface FrameSample {
   timestamp: number;
@@ -50,6 +63,11 @@ export class TrackingMetrics {
   private trackingLossCount = 0;
   private totalTrackingLossDurationMs = 0;
   private lastTrackingLossDurationMs = 0;
+
+  private handFrames = 0;
+  private duplicateLabelFrames = 0;
+  private labelSwitchCount = 0;
+  private previousHands: HandLabelObservation[] = [];
 
   constructor(options: TrackingMetricsOptions = {}) {
     const {
@@ -146,6 +164,56 @@ recordTracking(hasHand: boolean, timestamp: number): void {
 }
 
 
+  /**
+   * Registra os rótulos de lateralidade detectados em um frame para
+   * medir instabilidades de identificação (rótulos duplicados e trocas).
+   */
+  recordHands(hands: HandLabelObservation[], timestamp: number): void {
+    this.validateTimestamp(timestamp);
+
+    if (hands.length > 0) {
+      this.handFrames++;
+    }
+
+    const counts = new Map<string, number>();
+
+    for (const hand of hands) {
+      if (hand.handedness === "Unknown") continue;
+
+      counts.set(hand.handedness, (counts.get(hand.handedness) ?? 0) + 1);
+    }
+
+    if ([...counts.values()].some((count) => count > 1)) {
+      this.duplicateLabelFrames++;
+    }
+
+    const previous = this.previousHands;
+
+    if (previous.length === 1 && hands.length === 1) {
+      const before = previous[0];
+      const now = hands[0];
+
+      if (
+        before.handedness !== now.handedness &&
+        before.handedness !== "Unknown" &&
+        now.handedness !== "Unknown" &&
+        before.wrist &&
+        now.wrist &&
+        Math.hypot(
+          now.wrist.x - before.wrist.x,
+          now.wrist.y - before.wrist.y
+        ) <= SAME_HAND_MAX_DISTANCE
+      ) {
+        this.labelSwitchCount++;
+      }
+    }
+
+    this.previousHands = hands.map((hand) => ({
+      handedness: hand.handedness,
+      wrist: hand.wrist ? { ...hand.wrist } : null,
+    }));
+  }
+
   getSnapshot(timestamp: number): TrackingMetricsSnapshot {
     this.validateTimestamp(timestamp);
 
@@ -194,6 +262,9 @@ recordTracking(hasHand: boolean, timestamp: number): void {
       lastTrackingLossDurationMs: this.lastTrackingLossDurationMs,
       isTrackingLost: this.isTrackingLost,
       currentTrackingLossDurationMs,
+      handFrames: this.handFrames,
+      duplicateLabelFrames: this.duplicateLabelFrames,
+      labelSwitchCount: this.labelSwitchCount,
     };
   }
 
@@ -208,6 +279,11 @@ recordTracking(hasHand: boolean, timestamp: number): void {
     this.trackingLossCount = 0;
     this.totalTrackingLossDurationMs = 0;
     this.lastTrackingLossDurationMs = 0;
+
+    this.handFrames = 0;
+    this.duplicateLabelFrames = 0;
+    this.labelSwitchCount = 0;
+    this.previousHands = [];
   }
 
   private finishTrackingLoss(timestamp: number): void {
