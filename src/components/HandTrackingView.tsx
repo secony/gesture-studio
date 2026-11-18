@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { CameraManager } from "../camera/CameraManager";
 import { HandTracker } from "../tracking/HandTracker";
@@ -134,6 +133,7 @@ export function HandTrackingView() {
     let animationId = 0;
     let lastVideoTime = -1;
     let lastCursorPosition: CursorPosition | null = null;
+    let lastMetricsLogAt = 0;
 
     let consecutiveFrameErrors = 0;
     const MAX_CONSECUTIVE_FRAME_ERRORS = 3;
@@ -208,6 +208,16 @@ export function HandTrackingView() {
 
             // Reconhecimento de gestos.
             const gestureFrame = gestureEngine.process(hands);
+
+            trackingMetrics.recordHands(
+              hands.map((hand) => ({
+                handedness: hand.handedness,
+                wrist: hand.landmarks[0]
+                  ? { x: hand.landmarks[0].x, y: hand.landmarks[0].y }
+                  : null,
+              })),
+              performance.now()
+            );
             const currentGestures = gestureFrame.hands;
 
             // Processamento de eventos de interação.
@@ -512,6 +522,19 @@ for (const object of nextPlaygroundState.objects) {
               frameFinishedAt - frameStartedAt,
               frameFinishedAt
             );
+
+            // Diagnóstico para validação em câmera real (somente em desenvolvimento).
+            if (
+              import.meta.env.DEV &&
+              frameFinishedAt - lastMetricsLogAt >= 5000
+            ) {
+              lastMetricsLogAt = frameFinishedAt;
+
+              console.info(
+                "[METRICS]",
+                trackingMetrics.getSnapshot(frameFinishedAt)
+              );
+            }
 
             consecutiveFrameErrors = 0;
           } catch (err) {
