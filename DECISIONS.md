@@ -57,7 +57,7 @@ Utilizar histórico de frames consecutivos para estabilizar os gestos.
 A implementação atual utiliza:
 
 - 3 frames para estabilização geral.
-- 6 frames para liberação da pinça.
+- 3 frames para liberação da pinça (alterado de 6 para 3 no commit `404aa0e`, em 12/11/2026).
 - Tolerância de até 5 frames sem detecção.
 
 **Justificativa:**
@@ -208,16 +208,51 @@ Concluir a regressão com câmera real após a integração, verificando movimen
 
 ---
 
+## DEC-012 — Identidade das mãos com rótulos de lateralidade duplicados
+
+**Contexto:**
+
+O `GestureEngine` indexava o histórico de gestos pelo rótulo de lateralidade ("Right" ou "Left"). Quando duas mãos recebiam o mesmo rótulo no mesmo frame, ambas compartilhavam um único histórico.
+
+**Evidência (reprodução em teste sintético):**
+
+- Duas mãos rotuladas "Right", uma aberta e uma fechada: ambas permaneceram `UNKNOWN` por 10 frames, sem eventos.
+- Duas mãos abertas com o mesmo rótulo: a estabilização ocorria em 2 frames em vez de 3.
+
+**Decisão:**
+
+Quando há rótulos repetidos no mesmo frame, cada mão é associada ao histórico cujo último pulso está mais próximo. Com rótulos distintos, a chave continua sendo o rótulo. Uma trilha extra não é reportada como mão ausente enquanto o rótulo estiver presente em outra mão.
+
+**Escopo preservado:**
+
+Thresholds, classificador, One Euro e `HandTracker` não foram alterados.
+
+**Limitações:**
+
+- Não resolve a troca persistente de rótulo de uma mesma mão; isso exigiria alterar a associação de cursor/mão na `HandTrackingView`.
+- Validado apenas com mãos sintéticas. Falta validação em câmera real.
+
+**Instrumentação:**
+
+O `TrackingMetrics` registra `handFrames`, `duplicateLabelFrames` e `labelSwitchCount`, impressos no console em desenvolvimento a cada 5 segundos.
+
+---
+
 ## Pendências técnicas identificadas
 
 Os itens abaixo são observações para revisão futura, não necessariamente defeitos confirmados.
 
 - Avaliar a integração entre ActionEngine e PlaygroundEngine.
-- Investigar o threshold `fingerCurled`, declarado mas não utilizado pelo classificador.
-- Avaliar o custo de processamento do Canvas e dos estados React por frame.
+- ~~Investigar o threshold `fingerCurled`, declarado mas não utilizado pelo classificador.~~ Resolvido: o classificador o utiliza desde o commit `9390a2f` (14/11/2026). Entre `fingerCurled` (1.05) e o limiar de dedo estendido (1.10) existe uma faixa indeterminada, por projeto.
+- Medir em câmera real o efeito do duplo atraso na soltura da pinça (3 frames no `GestureEngine` e 50 ms no `PlaygroundEngine`, cerca de 5 frames somados a 30 fps). Hipótese sem medição; não alterar sem evidência.
+- Avaliar o custo de processamento do Canvas. Os estados React por frame são comparados antes de atualizar (verificado por leitura de código); o custo do Canvas ainda não foi medido.
 - Avaliar o ciclo de vida de inicializações repetidas do HandTracker.
 - Definir métricas de desempenho e confiabilidade.
 - Avaliar processamento em Web Worker.
 - Melhorar a organização e a documentação da interface.
+
+- Coletar em câmera real as métricas `duplicateLabelFrames` e `labelSwitchCount` (log `[METRICS]` em desenvolvimento) para decidir sobre a troca persistente de rótulo.
+- Hipótese do timestamp do One Euro (o filtro recebe `performance.now()` do processamento, e não o instante de captura do frame): em simulação (300 execuções, 30 fps, rAF a 60 Hz, inferência de 8 a 25 ms, ruído de 0,002, `minCutoff` 10 e `beta` 4), o erro RMS variou cerca de 1% com a mão parada e cerca de 5% com a mão em movimento (7,44e-3 contra 7,82e-3, em coordenadas normalizadas), sem timestamps fora de ordem. Não há evidência para alterar o filtro. A simulação usa latências e ruído assumidos; só uma medição em câmera real, com replay, pode contradizer esse resultado.
+- A associação cursor/mão ainda depende do rótulo "Right" (cursor) e "Left" (segunda mão); não há suporte a canhotos.
 
 Nenhuma dessas pendências deve provocar alterações prematuras em funcionalidades validadas.
